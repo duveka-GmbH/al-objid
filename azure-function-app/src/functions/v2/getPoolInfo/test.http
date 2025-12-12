@@ -1,9 +1,0 @@
-### Request a new public key
-
-get http://localhost:7071/api/v2/getPoolInfo
-Content-Type: application/json
-
-{
-    "poolId": "92df3bedf74ed9f560aa08ac501cec2e4b5070d4ddc898e14873d9cbd5e5b524",
-    "accessKey": "ds5teiW6hm3BZty+SGAtHWABS07tL996"
-}

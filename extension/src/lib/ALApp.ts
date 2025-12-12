@@ -1,0 +1,195 @@
+import * as path from "path";
+import * as fs from "fs";
+import { Disposable, EventEmitter, Uri, WorkspaceFolder } from "vscode";
+import { getSha256 } from "./functions/getSha256";
+import { ALAppManifest } from "./ALAppManifest";
+import { ObjIdConfig } from "./ObjIdConfig";
+import { APP_FILE_NAME, CONFIG_FILE_NAME } from "./constants";
+import { output } from "../features/Output";
+import { FileWatcher } from "./FileWatcher";
+import { ObjIdConfigWatcher } from "./ObjectIdConfigWatcher";
+import { BackEndAppInfo } from "./backend/BackEndAppInfo";
+import { Telemetry, TelemetryEventType } from "./Telemetry";
+import { AssigmentMonitor } from "../features/AssignmentMonitor";
+
+export class ALApp implements Disposable, BackEndAppInfo {
+    private readonly _uri: Uri;
+    private readonly _configUri: Uri;
+    private readonly _name: string;
+    private readonly _assignmentMonitor: AssigmentMonitor;
+    private readonly _manifestWatcher: FileWatcher;
+    private readonly _manifestChanged: Disposable;
+    private readonly _configWatcher: ObjIdConfigWatcher;
+    private readonly _onManifestChanged = new EventEmitter<ALApp>();
+    private readonly _onConfigChanged = new EventEmitter<ALApp>();
+    public readonly onManifestChanged = this._onManifestChanged.event;
+    public readonly onConfigChanged = this._onConfigChanged.event;
+    private _diposed = false;
+    private _manifest: ALAppManifest;
+    private _config: ObjIdConfig;
+    private _hash: string | undefined;
+
+    private constructor(uri: Uri, name: string, manifest: ALAppManifest) {
+        this._uri = uri;
+        this._manifest = manifest;
+        this._name = name;
+        this._configUri = Uri.file(path.join(uri.fsPath, CONFIG_FILE_NAME));
+        this._config = this.createObjectIdConfig();
+
+        this._manifestWatcher = new FileWatcher(manifest.uri);
+        this._manifestChanged = this._manifestWatcher.onChanged(() => this.onManifestChangedFromWatcher());
+
+        this._configWatcher = new ObjIdConfigWatcher(
+            this._config,
+            () => this,
+            () => {
+                const newConfig = this.setUpConfigFile();
+                this._onConfigChanged.fire(this);
+                return newConfig;
+            }
+        );
+
+        this._assignmentMonitor = new AssigmentMonitor(uri, this.hash);
+    }
+
+    private createObjectIdConfig(): ObjIdConfig {
+        const objIdConfig = new ObjIdConfig(this._configUri, this);
+        this.logTelemetryFeatures(objIdConfig);
+        return objIdConfig;
+    }
+
+    private logTelemetryFeatures(objIdConfig: ObjIdConfig): void {
+        const features: string[] = [];
+        if (objIdConfig.idRanges.length > 0) {
+            features.push("logicalRanges");
+        }
+        if (objIdConfig.objectTypesSpecified.length > 0) {
+            features.push("objectRanges");
+        }
+        if (objIdConfig.appPoolId?.trim()) {
+            features.push("appPoolId");
+        }
+        if (objIdConfig.bcLicense?.trim()) {
+            features.push("bcLicense");
+        }
+        if (features.length) {
+            // TODO This is a stupid way to address problems explained deeper in #41 and #42
+            /*
+            The problem is that during app initialization, at this point the WorkspaceManager instance in creation has
+            not yet been assigned to the singleton instance property, but WorkspaceManager.instance will be accessed from
+            call stack of checkApp function in Backend, that happens during processing of telemetry.
+            This would not be a problem if #41 and #42 were done. Then, telemetry would send ALApp instance, rather than
+            app hash, and checkApp function would not need to access WorkspaceManager.instance or check for app pool.
+
+            Once #41 and #42 are solved, refactor this one, too.
+            */
+            setTimeout(() => {
+                Telemetry.instance.logOnceAndNeverAgain(TelemetryEventType.FeatureInUse, this, { features });
+            }, 2000);
+        }
+    }
+
+    private onManifestChangedFromWatcher() {
+        output.log(`Change detected on ${this._manifest.uri.fsPath}`);
+        const manifest = ALAppManifest.tryCreate(this._manifest.uri);
+        if (!manifest) {
+            // This can only mean that the new manifest is not a valid JSON that we can parse.
+            // Until it is edited again, and parsable again, we keep the old manifest in memory.
+            return;
+        }
+
+        const oldId = this._manifest.id;
+        this._manifest = manifest;
+        if (manifest.id !== oldId) {
+            output.log(`Manifest id changed from ${oldId} to ${manifest.id}, resetting hash.`);
+            this._hash = undefined;
+            this._configWatcher.updateConfigAfterAppIdChange(this.setUpConfigFile());
+        }
+        this._onManifestChanged.fire(this);
+    }
+
+    private setUpConfigFile(): ObjIdConfig {
+        return (this._config = this.createObjectIdConfig());
+    }
+
+    public static tryCreate(folder: WorkspaceFolder): ALApp | undefined {
+        const uri = folder.uri;
+        const manifestUri = Uri.file(path.join(uri.fsPath, APP_FILE_NAME));
+        if (!fs.existsSync(manifestUri.fsPath)) {
+            return;
+        }
+
+        const manifest = ALAppManifest.tryCreate(manifestUri);
+        return manifest && new ALApp(uri, folder.name, manifest);
+    }
+
+    /**
+     * URI of the folder (root) of this AL app.
+     */
+    public get uri(): Uri {
+        return this._uri;
+    }
+
+    public get name(): string {
+        return this._name;
+    }
+
+    /**
+     * App manifest (`app.json`) representation as an object. This object is read-only.
+     */
+    public get manifest(): ALAppManifest {
+        return this._manifest;
+    }
+
+    /**
+     * Ninja config file (`.objidconfig`) representation as an object. This object is read/write.
+     * Any changes you make to its public properties will be persisted to the underlying
+     * `.objidconfig` file.
+     */
+    public get config(): ObjIdConfig {
+        return this._config;
+    }
+
+    /**
+     * SHA256 hash of the app ID (the `id` property from `app.json`). This property is needed for
+     * identifying the app for most purposes throughout Ninja.
+     */
+    public get hash() {
+        return this._hash || (this._hash = getSha256(this._manifest.id));
+    }
+
+    /**
+     * Returns the `authKey` property from the `.objidconfig` file. This property is here to implement BackEndAppInfo.
+     */
+    public get authKey(): string {
+        return this._config.authKey;
+    }
+
+    /**
+     * Returns the assignment monitor instance for this app.
+     */
+    public get assignmentMonitor(): AssigmentMonitor {
+        return this._assignmentMonitor;
+    }
+
+    /**
+     * Checks if this ALApp instance represents the specified workspace folder.
+     * @param folder Workspace folder for which to check if this ALApp instance represents it.
+     * @returns Boolean value indicating whether this ALApp instance represents the specified workspace folder.
+     */
+    public isFolder(folder: WorkspaceFolder): boolean {
+        return folder.uri.fsPath == this._uri.fsPath;
+    }
+
+    public dispose() {
+        if (this._diposed) {
+            return;
+        }
+        this._diposed = true;
+        this._manifestChanged.dispose();
+        this._manifestWatcher.dispose();
+        this._configWatcher.dispose();
+        this._onManifestChanged.dispose();
+        this._onConfigChanged.dispose();
+    }
+}

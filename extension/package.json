@@ -1,0 +1,425 @@
+{
+    "name": "vjeko-al-objid",
+    "displayName": "AL Object ID Ninja",
+    "description": "Manage object IDs in multi-user environments with mind-boggling simplicity.",
+    "publisher": "vjeko",
+    "version": "3.0.0",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/vjekob/al-objid.git"
+    },
+    "homepage": "https://github.com/vjekob/al-objid/blob/master/vscode-extension/README.md",
+    "bugs": "https://github.com/vjekob/al-objid/issues",
+    "icon": "images/icon.png",
+    "galleryBanner": {
+        "color": "#505C6D",
+        "theme": "dark"
+    },
+    "engines": {
+        "vscode": "^1.101.0"
+    },
+    "license": "MIT",
+    "categories": [
+        "Formatters",
+        "Language Packs",
+        "Linters",
+        "Other"
+    ],
+    "keywords": [
+        "AL",
+        "AL Extensions",
+        "Auto Suggest",
+        "Best Practices",
+        "Dynamics 365 Business Central",
+        "Dynamics NAV",
+        "ERP",
+        "IntelliSense",
+        "Object IDs"
+    ],
+    "badges": [
+        {
+            "url": "https://img.shields.io/github/license/vjekob/al-objid",
+            "href": "https://github.com/vjekob/al-objid/blob/master/LICENSE.md",
+            "description": "AL Object ID Ninja is licensed under MIT License"
+        },
+        {
+            "url": "https://img.shields.io/github/languages/top/vjekob/al-objid",
+            "href": "https://www.typescriptlang.org/",
+            "description": "Learn TypeScript"
+        },
+        {
+            "url": "https://img.shields.io/github/forks/vjekob/al-objid?style=social",
+            "href": "https://github.com/vjekob/al-objid/network/members",
+            "description": "Fork this repository and become one of the contributors"
+        },
+        {
+            "url": "https://img.shields.io/github/stars/vjekob/al-objid?style=social",
+            "href": "https://github.com/vjekob/al-objid/stargazers",
+            "description": "Share the love! If you like AL Object ID Ninja, give it a star on GitHub!"
+        }
+    ],
+    "activationEvents": [
+        "onLanguage:al",
+        "workspaceContains:/.objidconfig"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "vjeko-al-objid.confirm-sync-object-ids",
+                "category": "Ninja",
+                "title": "Synchronize Object IDs with Azure Back End",
+                "icon": "$(cloud-upload)"
+            },
+            {
+                "command": "vjeko-al-objid.confirm-authorize-app",
+                "category": "Ninja",
+                "title": "Authorize AL App"
+            },
+            {
+                "command": "vjeko-al-objid.confirm-deauthorize-app",
+                "category": "Ninja",
+                "title": "Deauthorize AL App"
+            },
+            {
+                "command": "vjeko-al-objid.auto-sync-object-ids",
+                "category": "Ninja",
+                "title": "Automatically Synchronize Object IDs for Entire Workspace",
+                "icon": {
+                    "dark": "images/share-all-dark.svg",
+                    "light": "images/share-all-light.svg"
+                }
+            },
+            {
+                "command": "vjeko-al-objid.show-release-notes",
+                "category": "Ninja",
+                "title": "Show Release Notes"
+            },
+            {
+                "command": "vjeko-al-objid.copy-ranges",
+                "category": "Ninja",
+                "icon": "$(copy)",
+                "title": "Copy ranges from app.json to .objidconfig"
+            },
+            {
+                "command": "vjeko-al-objid.consolidate-ranges",
+                "category": "Ninja",
+                "icon": "$(wand)",
+                "title": "Consolidate logical ranges"
+            },
+            {
+                "command": "vjeko-al-objid.create-app-pool",
+                "category": "Ninja",
+                "title": "Create an App Pool"
+            },
+            {
+                "command": "vjeko-al-objid.validate-bclicense",
+                "category": "Ninja",
+                "title": "Validate object IDs against license"
+            },
+            {
+                "command": "vjeko-al-objid.report-consumption",
+                "category": "Ninja",
+                "title": "Report consumption",
+                "icon": "$(export)"
+            },
+            {
+                "command": "vjeko-al-objid.select-bclicense",
+                "category": "Ninja",
+                "title": "Select default license for validation"
+            },
+            {
+                "command": "vjeko-al-objid.expand-all-rangeExplorer",
+                "category": "Ninja",
+                "title": "Expand all",
+                "icon": "$(expand-all)"
+            },
+            {
+                "command": "vjeko-al-objid.collapse-all-rangeExplorer",
+                "category": "Ninja",
+                "title": "Collapse all",
+                "icon": "$(collapse-all)"
+            },
+            {
+                "command": "vjeko-al-objid.goto-definition",
+                "category": "Ninja",
+                "title": "Go to definition",
+                "icon": "$(go-to-file)"
+            },
+            {
+                "command": "vjeko-al-objid.quickfix-store-id-assignment",
+                "category": "Ninja",
+                "title": "Store ID assignment"
+            },
+            {
+                "command": "vjeko-al-objid.store-id-assignment",
+                "category": "Ninja",
+                "title": "Store ID assignment",
+                "icon": "$(cloud-upload)"
+            },
+            {
+                "command": "vjeko-al-objid.reclaim-object-id",
+                "category": "Ninja",
+                "title": "Reclaim object ID",
+                "icon": "$(discard)"
+            },
+            {
+                "command": "vjeko-al-objid.confirm-reclaim-object-id",
+                "category": "Ninja",
+                "title": "Reclaim object ID",
+                "icon": "$(discard)"
+            }
+        ],
+        "configuration": {
+            "title": "AL Object ID Ninja",
+            "properties": {
+                "objectIdNinja.backEndUrl": {
+                    "type": "string",
+                    "markdownDescription": "URL of the back-end API you want to communicate with. This API must support the same functionality as https://github.com/vjekob/al-objid/tree/master/azure-function-app. You must not include `https` or any leading or training slashes. **Important:** The endpoint must be on the HTTPS protocol. Examples are: `my-al-objectid.azurewebsites.net`, `myids.contoso.com`. Incorrect examples are: `https://my-al-objectid.azurewebsites.net/` or `http://mids.contoso.com/`"
+                },
+                "objectIdNinja.backEndAPIKey": {
+                    "type": "string",
+                    "markdownDescription": "API key used to access the back-end. This API key is passed as `x-functions-key` header to all of API endpoints. When using Azure Functions, make sure this is the app key that can authorize access to all individual functions in the app."
+                },
+                "objectIdNinja.showEventLogNotifications": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show notifications when other developers create objects in the app you are working on."
+                },
+                "objectIdNinja.useVerboseOutputLogging": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "Switch this on if you want very detailed messages in the AL Object ID Ninja output channel."
+                },
+                "objectIdNinja.showReleaseNotes": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Whenever you update AL Object ID Ninja to a new version that includes important updates, we'll show you the release notes. If you prefer not being interrupted, switch this option off."
+                },
+                "objectIdNinja.showRangeWarnings": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Show notifications when the available range is about to run out. **It's a good idea to keep this option switched on!**"
+                },
+                "objectIdNinja.requestPerRange": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Requires that next IDs are retrieved per range. For example, if an app declares multiple ranges, Ninja will suggest the next ID from each range where IDs are available. User can then choose the range from which the ID will be assigned."
+                }
+            }
+        },
+        "languages": [
+            {
+                "id": "jsonc",
+                "filenames": [
+                    ".objidconfig"
+                ]
+            }
+        ],
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "vjeko-al-objid",
+                    "icon": "images/tree-view.svg",
+                    "title": "AL Object ID Ninja",
+                    "when": "vjeko-al-objid.active == true"
+                }
+            ]
+        },
+        "views": {
+            "vjeko-al-objid": [
+                {
+                    "id": "ninja-rangeExplorer",
+                    "name": "Range Explorer",
+                    "icon": "images/tree-view.svg",
+                    "contextualTitle": "Range Explorer",
+                    "type": "tree",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "id": "ninja-appPoolExplorer",
+                    "name": "App Pool Explorer",
+                    "icon": "images/tree-view.svg",
+                    "contextualTitle": "App Pool Explorer",
+                    "type": "tree",
+                    "visibility": "collapsed",
+                    "when": "vjeko-al-objid.feature.managedPools == true"
+                },
+                {
+                    "id": "ninja-assignmentExplorer",
+                    "name": "Assignment Explorer",
+                    "icon": "images/tree-view.svg",
+                    "contextualTitle": "Assignment Explorer",
+                    "type": "tree",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "id": "ninja-licenseExplorer",
+                    "name": "License Explorer",
+                    "icon": "images/tree-view.svg",
+                    "contextualTitle": "License Explorer",
+                    "type": "tree",
+                    "when": "false"
+                }
+            ]
+        },
+        "menus": {
+            "view/title": [
+                {
+                    "command": "vjeko-al-objid.auto-sync-object-ids",
+                    "group": "navigation",
+                    "when": "view == ninja-rangeExplorer"
+                },
+                {
+                    "command": "vjeko-al-objid.expand-all-rangeExplorer",
+                    "group": "navigation",
+                    "when": "view == ninja-rangeExplorer && ninja-rangeExplorer.hasCollapsed == true"
+                },
+                {
+                    "command": "vjeko-al-objid.collapse-all-rangeExplorer",
+                    "group": "navigation",
+                    "when": "view == ninja-rangeExplorer && ninja-rangeExplorer.hasExpanded == true"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "vjeko-al-objid.confirm-sync-object-ids",
+                    "group": "inline",
+                    "when": "view == ninja-rangeExplorer && viewItem =~ /,ninja-sync,/"
+                },
+                {
+                    "command": "vjeko-al-objid.report-consumption",
+                    "group": "inline",
+                    "when": "view == ninja-rangeExplorer && viewItem =~ /,ninja-sync,/"
+                },
+                {
+                    "command": "vjeko-al-objid.goto-definition",
+                    "group": "inline",
+                    "when": "view == ninja-rangeExplorer && viewItem =~ /,ninja-goto-def,/"
+                },
+                {
+                    "command": "vjeko-al-objid.consolidate-ranges",
+                    "group": "inline",
+                    "when": "view == ninja-rangeExplorer && viewItem =~ /,ninja-consolidate-ranges,/"
+                },
+                {
+                    "command": "vjeko-al-objid.copy-ranges",
+                    "group": "inline",
+                    "when": "view == ninja-rangeExplorer && viewItem =~ /,ninja-copy-ranges,/"
+                },
+                {
+                    "command": "vjeko-al-objid.confirm-reclaim-object-id",
+                    "group": "inline",
+                    "when": "view == ninja-assignmentExplorer && viewItem =~ /,ninja-reclaim-id,/"
+                },
+                {
+                    "command": "vjeko-al-objid.store-id-assignment",
+                    "group": "inline",
+                    "when": "view == ninja-assignmentExplorer && viewItem =~ /,ninja-store-assignment,/"
+                }
+            ],
+            "explorer/context": [
+                {
+                    "command": "vjeko-al-objid.validate-bclicense",
+                    "group": "1_modification@1",
+                    "when": "resourceExtname == .bclicense"
+                },
+                {
+                    "command": "vjeko-al-objid.select-bclicense",
+                    "group": "1_modification@2",
+                    "when": "resourceExtname == .bclicense"
+                }
+            ],
+            "commandPalette": [
+                {
+                    "command": "vjeko-al-objid.confirm-sync-object-ids",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "command": "vjeko-al-objid.confirm-authorize-app",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "command": "vjeko-al-objid.confirm-deauthorize-app",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "command": "vjeko-al-objid.auto-sync-object-ids",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "command": "vjeko-al-objid.show-release-notes",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "command": "vjeko-al-objid.copy-ranges",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "command": "vjeko-al-objid.consolidate-ranges",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "command": "vjeko-al-objid.create-app-pool",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "command": "vjeko-al-objid.validate-bclicense",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "command": "vjeko-al-objid.select-bclicense",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "command": "vjeko-al-objid.report-consumption",
+                    "when": "vjeko-al-objid.active == true"
+                },
+                {
+                    "command": "vjeko-al-objid.expand-all-rangeExplorer",
+                    "when": "false"
+                },
+                {
+                    "command": "vjeko-al-objid.collapse-all-rangeExplorer",
+                    "when": "false"
+                },
+                {
+                    "command": "vjeko-al-objid.goto-definition",
+                    "when": "false"
+                },
+                {
+                    "command": "vjeko-al-objid.confirm-reclaim-object-id",
+                    "when": "false"
+                },
+                {
+                    "command": "vjeko-al-objid.quickfix-store-id-assignment",
+                    "when": "false"
+                },
+                {
+                    "command": "vjeko-al-objid.reclaim-object-id",
+                    "when": "false"
+                },
+                {
+                    "command": "vjeko-al-objid.store-id-assignment",
+                    "when": "false"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "lint": "eslint src --ext ts"
+    },
+    "dependencies": {
+        "comment-json": "^4.1.1",
+        "xml2js": "^0.5.0"
+    },
+    "devDependencies": {
+        "@types/node": "^22.x",
+        "@types/vscode": "^1.101.0",
+        "@types/xml2js": "^0.4.14",
+        "typescript": "^5.9.0"
+    }
+}
