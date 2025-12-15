@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"name": "/",
+			"path": "."
+		},
+		{
+			"name": "Documentation",
+			"path": "doc"
+		},
+		{
+			"name": "Backend",
+			"path": "./backend"
+		},
+		{
+			"name": "Extension",
+			"path": "./extension"
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"**/.git": true,
+			"**/dist": true,
+			"**/node_modules": true,
+			"backend": true,
+			"extension": true
+		}
+	}
+}
