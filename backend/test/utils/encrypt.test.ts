@@ -106,16 +106,18 @@ describe("encrypt (real crypto)", () => {
     });
 
     describe("decryption with wrong key", () => {
-        it("should return undefined when decrypting with wrong key", () => {
+        it("should fail when decrypting with wrong key", () => {
             const plaintext = "secret message";
             const wrongKey = "00000000000000000000000000000000";
 
             const encrypted = encrypt(plaintext, validKey)!;
             const decrypted = decrypt(encrypted, wrongKey);
 
-            // Decryption with wrong key should fail (return undefined or wrong value)
-            // AES-CBC with wrong key typically throws an error due to padding issues
-            expect(decrypted).toBeUndefined();
+            // Decryption with wrong key should fail (return undefined or garbage)
+            // AES-CBC with wrong key may throw an error or produce garbage output
+            if (decrypted !== undefined) {
+                expect(decrypted).not.toBe(plaintext);
+            }
         });
     });
 
