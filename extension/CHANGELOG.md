@@ -5,7 +5,28 @@ All notable changes to the AL Object ID Ninja extension will be documented in th
 The log is kept in [Keep a Changelog](http://keepachangelog.com/) format. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [3.0.0] - 2024-12-XX
+## [3.0.5] - 2025-12-19
+
+### Added
+
+- Additional (anonymized) unique user counting telemetry to help understand migration trends (users moving from public to
+  private, or from private to public endpoints).
+- Inclusion of app name and publisher information in HTTP headers to allow auto-matching apps and users to customer organizations.
+
+## [3.0.4] - 2025-12-19
+
+### Fixed
+
+- Failed to resolve native parser module path. Platform: win32 (arm64) ([Git issue #95](https://github.com/vjekob/al-objid/issues/95))
+
+## [3.0.3] - 2025-12-17
+
+### Fixed
+
+- AL Object ID Ninja doesn't work with app.json with comments ([Git issue #89](https://github.com/vjekob/al-objid/issues/89))
+- Al Object Ninja doesn't appear in VS Code ([Git issue #79](https://github.com/vjekob/al-objid/issues/79))
+
+## [3.0.0] - 2025-12-15
 
 ### Changed
 

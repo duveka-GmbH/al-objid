@@ -2,6 +2,7 @@ import { extensions } from "vscode";
 
 export const EXTENSION_NAME = "AL Object ID Ninja";
 export const EXTENSION_VERSION = extensions.getExtension("vjeko.vjeko-al-objid")?.packageJSON?.version;
+export const EXTENSION_ID = "vjeko.vjeko-al-objid";
 
 export const APP_FILE_NAME = "app.json";
 export const CONFIG_FILE_NAME = ".objidconfig";
@@ -77,7 +78,7 @@ export const DOCUMENTS = {
     APP_POOLS: "app-pools",
 };
 
-export const TELEMETRY_HOST_NAME = "alninja-telemetry.azurewebsites.net";
+export const TELEMETRY_HOST_NAME = "telemetry.alid.ninja";
 
 export const API_RESULT = {
     NOT_SENT: Symbol("NOT_SENT"),

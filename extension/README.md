@@ -267,3 +267,21 @@ These features are planned for future versions:
 
 Special thanks to [waldo](https://twitter.com/waldo1001) who brainstormed this extension with me
 and tested the snot out of it.
+
+## Privacy
+
+Your use of this extension is subject to our [Privacy Policy](https://alid.ninja/privacy). By installing and using AL Object ID Ninja, you acknowledge and accept its terms.
+
+Here's what the extension sends to our servers:
+
+- **Your email address** is sent to the backend for account management purposes, including user identification and access control.
+- **App ID, publisher name, and app name** from your `app.json` are sent to identify the security context and object ID assignment context, which is essential for the extension to function correctly.
+- **A cryptographic hash of your email address** is collected for anonymous telemetry to help us understand feature usage and improve the product. This hash cannot be reversed to obtain your actual email.
+
+**What we don't do:**
+- We don't sell your data to third parties
+- We don't use your data for advertising
+- We don't track you across other applications or websites
+- We don't share your personal information with advertisers or data brokers
+
+For complete details, please read our [Privacy Policy](https://alid.ninja/privacy).

@@ -4,6 +4,7 @@ import { PropertyBag } from "../lib/types/PropertyBag";
 import { QuickPickWrapper } from "../lib/QuickPickWrapper";
 import { UI } from "../lib/UI";
 import { ALFoldersChangedEvent } from "../lib/types/ALFoldersChangedEvent";
+import { Backend } from "../lib/backend/Backend";
 
 export class WorkspaceManager implements Disposable {
     private static _instance: WorkspaceManager;
@@ -21,6 +22,12 @@ export class WorkspaceManager implements Disposable {
             this.onDidChangeWorkspaceFolders.bind(this)
         );
         this.addFoldersToWatch((workspace.workspaceFolders || []) as WorkspaceFolder[]);
+
+        // Touch "start" for all initial apps (fire-and-forget)
+        if (this._apps.length > 0) {
+            Backend.touch(this._apps, "start")
+                .catch(err => console.error("Start touch request failed:", err));
+        }
     }
 
     public static get instance(): WorkspaceManager {
@@ -46,6 +53,12 @@ export class WorkspaceManager implements Disposable {
         // Add any folders that are added to the workspace
         const alAdded: ALApp[] = [];
         this.addFoldersToWatch(added as WorkspaceFolder[], alAdded);
+
+        // Touch "start" for newly added apps (fire-and-forget)
+        if (alAdded.length > 0) {
+            Backend.touch(alAdded, "start")
+                .catch(err => console.error("Start touch request failed:", err));
+        }
 
         // Fire the event with any AL Apps added or removed
         if (alRemoved.length || alAdded.length) {

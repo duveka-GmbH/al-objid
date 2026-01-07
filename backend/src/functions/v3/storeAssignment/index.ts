@@ -2,6 +2,7 @@ import { Blob } from "@vjeko.com/azure-blob";
 import { SingleAppHttpHandler, createEndpoint, validate, appRequestOptional } from "../../../http";
 import { validateALObjectType } from "../../../utils";
 import { logAppEvent } from "../../../utils/logging";
+import { ActivityLogger } from "../../../activity";
 import { AppInfo } from "../../../types";
 import { createAddAssignmentUpdateCallback, createRemoveAssignmentUpdateCallback } from "./updateCallbacks";
 import { AppCache } from "../../../cache";
@@ -41,6 +42,16 @@ const post: SingleAppHttpHandler<void, StoreAssignmentResponse> = async (req) =>
     const { type, id } = req.params as { type: string; id: string };
     const idNum = parseInt(id);
 
+    // Log activity for feature counting
+    const ninjaAppId = req.headers.get("Ninja-App-Id");
+    if (ninjaAppId) {
+        try {
+            await ActivityLogger.logActivity(ninjaAppId, req.user?.email || "", "addAssignment");
+        } catch (err) {
+            console.error("Activity logging failed:", err);
+        }
+    }
+
     const { app, success } = await addAssignment(req.appBlob, type, idNum);
 
     if (success) {
@@ -62,6 +73,16 @@ const post: SingleAppHttpHandler<void, StoreAssignmentResponse> = async (req) =>
 const postDelete: SingleAppHttpHandler<void, StoreAssignmentResponse> = async (req) => {
     const { type, id } = req.params as { type: string; id: string };
     const idNum = parseInt(id);
+
+    // Log activity for feature counting
+    const ninjaAppId = req.headers.get("Ninja-App-Id");
+    if (ninjaAppId) {
+        try {
+            await ActivityLogger.logActivity(ninjaAppId, req.user?.email || "", "removeAssignment");
+        } catch (err) {
+            console.error("Activity logging failed:", err);
+        }
+    }
 
     const { app, success } = await removeAssignment(req.appBlob, type, idNum);
 

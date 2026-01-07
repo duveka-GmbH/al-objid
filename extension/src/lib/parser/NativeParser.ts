@@ -5,6 +5,35 @@ import { CheckResponse } from "./CheckResponse";
 import { EventEmitter } from "events";
 import { getNativeModulePath, getExtensionRoot } from "./getNativeModulePath";
 
+/**
+ * Checks if an error is a Windows DLL loading error (error code 126)
+ * and returns a user-friendly message if so
+ */
+function getWindowsDllErrorMessage(error: Error, modulePath: string): string | null {
+    // Windows error 126 = ERROR_MOD_NOT_FOUND (missing DLL dependency)
+    if (process.platform !== "win32") {
+        return null;
+    }
+
+    const errorMessage = error.message || "";
+    if (!errorMessage.includes("126")) {
+        return null;
+    }
+
+    return [
+        `Failed to load native parser module: ${modulePath}`,
+        "",
+        "This error typically occurs when the Microsoft Visual C++ Redistributable is not installed.",
+        "",
+        "To fix this, please install the Visual C++ Redistributable:",
+        "  https://aka.ms/vs/17/release/vc_redist.x64.exe",
+        "",
+        "After installing, restart VS Code and try again.",
+        "",
+        `Technical details: ${errorMessage}`
+    ].join("\n");
+}
+
 // Native module interface - this should match what the .node file exports
 interface NativeParserModule {
     initialize(workers?: number): Promise<void>;
@@ -60,6 +89,15 @@ class NativeParser extends EventEmitter {
             console.log(`[AL Parser] Successfully loaded native module from: ${modulePath}`);
         } catch (error) {
             const err = error as Error;
+
+            // Check for Windows DLL loading error (error 126)
+            const dllErrorMessage = getWindowsDllErrorMessage(err, modulePath);
+            if (dllErrorMessage) {
+                console.error(`[AL Parser] ${dllErrorMessage}`);
+                this.emit("error", new Error(dllErrorMessage));
+                throw new Error(dllErrorMessage);
+            }
+
             const errorMessage = `Failed to load native parser module from ${modulePath}. Platform: ${platform} (${arch}). Error: ${err.message}`;
             console.error(`[AL Parser] ${errorMessage}`);
             this.emit("error", new Error(errorMessage));

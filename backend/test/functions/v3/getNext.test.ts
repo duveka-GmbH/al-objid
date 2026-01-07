@@ -365,6 +365,103 @@ describe("getNext", () => {
         });
     });
 
+    describe("POST handler - validation", () => {
+        describe("when perRange is true and commit is true but require is missing", () => {
+            it("should return 400 Bad Request error", async () => {
+                mockFindAvailablePerRange.mockReturnValue([50000, 60000]);
+                const request = createMockRequest({}, {
+                    body: {
+                        type: "codeunit",
+                        ranges: [
+                            { from: 50000, to: 59999 },
+                            { from: 60000, to: 69999 },
+                        ],
+                        perRange: true,
+                        commit: true,
+                        // require intentionally omitted
+                    },
+                });
+
+                await expect(endpointConfig.POST(request)).rejects.toThrow(ErrorResponse);
+                await expect(endpointConfig.POST(request)).rejects.toMatchObject({
+                    statusCode: HttpStatusCode.ClientError_400_BadRequest,
+                });
+            });
+
+            it("should not call optimisticUpdate when perRange is true, commit is true, and require is missing", async () => {
+                mockFindAvailablePerRange.mockReturnValue([50000, 60000]);
+                const request = createMockRequest({}, {
+                    body: {
+                        type: "codeunit",
+                        ranges: [
+                            { from: 50000, to: 59999 },
+                            { from: 60000, to: 69999 },
+                        ],
+                        perRange: true,
+                        commit: true,
+                        // require intentionally omitted
+                    },
+                });
+
+                try {
+                    await endpointConfig.POST(request);
+                } catch (e) {
+                    // Expected to throw
+                }
+
+                expect(mockBlobInstance.optimisticUpdate).not.toHaveBeenCalled();
+            });
+
+            it("should not update cache when perRange is true, commit is true, and require is missing", async () => {
+                mockFindAvailablePerRange.mockReturnValue([50000, 60000]);
+                const request = createMockRequest({}, {
+                    body: {
+                        type: "codeunit",
+                        ranges: [
+                            { from: 50000, to: 59999 },
+                            { from: 60000, to: 69999 },
+                        ],
+                        perRange: true,
+                        commit: true,
+                        // require intentionally omitted
+                    },
+                });
+
+                try {
+                    await endpointConfig.POST(request);
+                } catch (e) {
+                    // Expected to throw
+                }
+
+                expect(mockAppCache.set).not.toHaveBeenCalled();
+            });
+        });
+
+        describe("when perRange is true and commit is true and require is provided", () => {
+            it("should accept the request and commit the specified ID", async () => {
+                mockFindAvailablePerRange.mockReturnValue([50000, 60000]);
+                mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn(null, 0));
+                const request = createMockRequest({}, {
+                    body: {
+                        type: "codeunit",
+                        ranges: [
+                            { from: 50000, to: 59999 },
+                            { from: 60000, to: 69999 },
+                        ],
+                        perRange: true,
+                        commit: true,
+                        require: 50000,
+                    },
+                });
+
+                const result = await endpointConfig.POST(request);
+
+                expect(result.updated).toBe(true);
+                expect(mockBlobInstance.optimisticUpdate).toHaveBeenCalled();
+            });
+        });
+    });
+
     describe("cache interactions", () => {
         it("should update cache after successful commit", async () => {
             const updatedApp = { codeunit: [50000], _ranges: [{ from: 50000, to: 59999 }] };

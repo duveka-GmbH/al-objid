@@ -7,6 +7,7 @@ import { Output } from "./features/Output";
 import { Config } from "./lib/Config";
 import { HttpStatusHandler } from "./features/HttpStatusHandler";
 import { ReleaseNotesHandler } from "./features/ReleaseNotesHandler";
+import { MarketplaceVersionHandler } from "./features/MarketplaceVersionHandler";
 import { Telemetry } from "./lib/Telemetry";
 import { ParserConnector } from "./features/ParserConnector";
 import { Diagnostics } from "./features/diagnostics/Diagnostics";
@@ -57,6 +58,7 @@ export function activate(context: ExtensionContext) {
     );
 
     ReleaseNotesHandler.instance.check(context);
+    MarketplaceVersionHandler.instance.check(context);
 
     // Return public extension API
     return new ExtensionApi();

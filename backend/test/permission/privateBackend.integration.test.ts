@@ -584,7 +584,7 @@ describe("Private Backend Mode Integration Tests", () => {
 
                 expect(result.status).toBe(HttpStatusCode.Success_200_OK);
                 const body = JSON.parse(result.body as string);
-                expect(body.codeunit).toBeDefined();
+                expect(body?._appInfo?.codeunit).toBeDefined();
             });
 
             it("should not include permission warning in response", async () => {

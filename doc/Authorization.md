@@ -99,16 +99,3 @@ resides in the root.
 Maybe, if at some point Microsoft makes `app.json` extensible, the way that - for example - `package.json` is
 extensible for Node.js does, then Ninja will store the authorization key in there. Until this happens, the key stays
 in `.objidconfig`.
-
-## Making it even more secure
-
-Another way of making it secure is to deploy your own back end. Seriously. The back end is open-source much like the
-extension is. If you want to run it on your own infrastructure with your own Azure subscription, with your own security
-in place, and you can configure Ninja to use your own endpoints:
-
-![Configuration of own Azure function back end](./images/settings-own-back-end.png)
-
-Here's the repository for the back end Azure function app that the public **AL Object ID Ninja** extension is
-using: https://github.com/vjekob/al-objid/tree/master/azure-function-app
-
-If you need help setting it up, I am always available.

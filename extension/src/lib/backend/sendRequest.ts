@@ -63,6 +63,15 @@ export async function sendRequest<T>(
     if (manifest?.id) {
         headers["Ninja-App-Id"] = manifest.id;
     }
+    if (manifest?.publisher) {
+        headers["Ninja-App-Publisher"] = manifest.publisher;
+    }
+    if (manifest?.name) {
+        headers["Ninja-App-Name"] = manifest.name;
+    }
+    if (manifest?.version) {
+        headers["Ninja-App-Version"] = manifest.version;
+    }
 
     const url = `https://${hostname}${path}`;
 

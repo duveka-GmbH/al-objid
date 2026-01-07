@@ -1,6 +1,7 @@
 import { PermissionChecker } from "../../src/permission/PermissionChecker";
 import { CacheManager } from "../../src/permission/CacheManager";
 import { AppsCache, OrgMembersCache, BlockedCache, GRACE_PERIOD_MS } from "../../src/permission/types";
+import { MINIMUM_GRACE_PERIOD_END } from "../../src/permission/decisions";
 
 // Mock CacheManager
 jest.mock("../../src/permission/CacheManager", () => ({
@@ -8,7 +9,11 @@ jest.mock("../../src/permission/CacheManager", () => ({
         getAppsCache: jest.fn(),
         getOrgMembersCache: jest.fn(),
         getBlockedCache: jest.fn(),
+        getSettingsCache: jest.fn(),
         addOrphanedApp: jest.fn(),
+        addOrganizationApp: jest.fn(),
+        addUserToOrganizationAllowList: jest.fn(),
+        addUserToOrganizationDenyList: jest.fn(),
     },
 }));
 
@@ -17,6 +22,176 @@ describe("PermissionChecker", () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        // Default settings cache mock (no SKIP_USER_CHECK flag for any org)
+        mockCacheManager.getSettingsCache.mockResolvedValue({ updatedAt: 0, orgs: {} });
+    });
+
+    // =========================================================================
+    // _tryClaimAppByPublisher helper
+    // =========================================================================
+    describe("_tryClaimAppByPublisher", () => {
+        it("should return undefined when publisher is undefined", async () => {
+            const result = await (PermissionChecker as any)._tryClaimAppByPublisher(
+                "app-id",
+                Date.now() + 86400000,
+                "user@example.com",
+                undefined,
+                undefined
+            );
+
+            expect(result).toBeUndefined();
+            expect(mockCacheManager.getSettingsCache).not.toHaveBeenCalled();
+        });
+
+        it("should return undefined when no publisher matches", async () => {
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    org_1: { flags: 0, publishers: ["Other Publisher"] },
+                },
+            });
+
+            const result = await (PermissionChecker as any)._tryClaimAppByPublisher(
+                "app-id",
+                Date.now() + 86400000,
+                "user@example.com",
+                "Contoso",
+                undefined
+            );
+
+            expect(result).toBeUndefined();
+            expect(mockCacheManager.addOrganizationApp).not.toHaveBeenCalled();
+        });
+
+        it("should claim app and return org handler result when publisher matches", async () => {
+            const freeUntil = Date.now() + 86400000;
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    org_1: { flags: 0, publishers: ["Contoso"] },
+                },
+            });
+            mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                updatedAt: Date.now(),
+                orgs: {
+                    org_1: { allow: ["user@example.com"], deny: [] },
+                },
+            });
+            mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+
+            const result = await (PermissionChecker as any)._tryClaimAppByPublisher(
+                "app-id",
+                freeUntil,
+                "user@example.com",
+                "Contoso",
+                "My App"
+            );
+
+            expect(mockCacheManager.addOrganizationApp).toHaveBeenCalledWith(
+                "app-id",
+                "org_1",
+                freeUntil,
+                "Contoso",
+                "My App"
+            );
+            expect(result).toEqual({ allowed: true });
+        });
+
+        it("should match publisher case-insensitively", async () => {
+            const freeUntil = Date.now() + 86400000;
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    org_1: { flags: 0, publishers: ["CONTOSO"] },
+                },
+            });
+            mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                updatedAt: Date.now(),
+                orgs: {
+                    org_1: { allow: ["user@example.com"], deny: [] },
+                },
+            });
+            mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+
+            const result = await (PermissionChecker as any)._tryClaimAppByPublisher(
+                "app-id",
+                freeUntil,
+                "user@example.com",
+                "contoso",
+                undefined
+            );
+
+            expect(mockCacheManager.addOrganizationApp).toHaveBeenCalled();
+            expect(result).toBeDefined();
+        });
+
+        it("should trim whitespace from publisher names", async () => {
+            const freeUntil = Date.now() + 86400000;
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    org_1: { flags: 0, publishers: ["  Contoso  "] },
+                },
+            });
+            mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                updatedAt: Date.now(),
+                orgs: {
+                    org_1: { allow: ["user@example.com"], deny: [] },
+                },
+            });
+            mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+
+            const result = await (PermissionChecker as any)._tryClaimAppByPublisher(
+                "app-id",
+                freeUntil,
+                "user@example.com",
+                "  Contoso  ",
+                undefined
+            );
+
+            expect(mockCacheManager.addOrganizationApp).toHaveBeenCalled();
+            expect(result).toBeDefined();
+        });
+
+        it("should check all organizations for publisher match", async () => {
+            const freeUntil = Date.now() + 86400000;
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    org_1: { flags: 0, publishers: ["Other"] },
+                    org_2: { flags: 0, publishers: ["Contoso"] },
+                    org_3: { flags: 0, publishers: ["Another"] },
+                },
+            });
+            mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                updatedAt: Date.now(),
+                orgs: {
+                    org_2: { allow: ["user@example.com"], deny: [] },
+                },
+            });
+            mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+
+            const result = await (PermissionChecker as any)._tryClaimAppByPublisher(
+                "app-id",
+                freeUntil,
+                "user@example.com",
+                "Contoso",
+                undefined
+            );
+
+            expect(mockCacheManager.addOrganizationApp).toHaveBeenCalledWith(
+                "app-id",
+                "org_2",
+                freeUntil,
+                "Contoso",
+                undefined
+            );
+            expect(result).toEqual({ allowed: true });
+        });
     });
 
     // =========================================================================
@@ -28,9 +203,9 @@ describe("PermissionChecker", () => {
             mockCacheManager.getAppsCache.mockResolvedValue(emptyCache);
             mockCacheManager.addOrphanedApp.mockResolvedValue(undefined);
 
-            const result = await PermissionChecker.checkPermission("unknown-app", "user@example.com");
+            const result = await PermissionChecker.checkPermission("unknown-app", "user@example.com", undefined);
 
-            expect(mockCacheManager.addOrphanedApp).toHaveBeenCalledWith("unknown-app", expect.any(Number));
+            expect(mockCacheManager.addOrphanedApp).toHaveBeenCalledWith("unknown-app", expect.any(Number), undefined, undefined);
             expect(result).toEqual({
                 allowed: true,
                 warning: {
@@ -40,21 +215,177 @@ describe("PermissionChecker", () => {
             });
         });
 
+        it("should auto-claim unknown app when publisher matches approved publisher and user in allow list", async () => {
+            const emptyCache: AppsCache = { updatedAt: Date.now(), apps: {} };
+            mockCacheManager.getAppsCache.mockResolvedValue(emptyCache);
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    org_1: { flags: 0, publishers: ["Contoso"] },
+                },
+            });
+            mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                updatedAt: Date.now(),
+                orgs: {
+                    org_1: { allow: ["user@example.com"], deny: [] },
+                },
+            });
+            mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+
+            const result = await PermissionChecker.checkPermission("unknown-app", "user@example.com", "Contoso");
+
+            expect(mockCacheManager.addOrganizationApp).toHaveBeenCalledWith("unknown-app", "org_1", expect.any(Number), "Contoso", undefined);
+            expect(mockCacheManager.addOrphanedApp).not.toHaveBeenCalled();
+            expect(result).toEqual({ allowed: true });
+        });
+
         it("should set correct grace period for new orphaned app", async () => {
             const emptyCache: AppsCache = { updatedAt: Date.now(), apps: {} };
             mockCacheManager.getAppsCache.mockResolvedValue(emptyCache);
             mockCacheManager.addOrphanedApp.mockResolvedValue(undefined);
 
             const before = Date.now();
-            await PermissionChecker.checkPermission("new-app", "user@example.com");
+            await PermissionChecker.checkPermission("new-app", "user@example.com", undefined);
             const after = Date.now();
 
             const call = mockCacheManager.addOrphanedApp.mock.calls[0];
             const freeUntil = call[1];
 
-            // freeUntil should be now + GRACE_PERIOD_MS (5 days)
+            // freeUntil should be now + GRACE_PERIOD_MS (15 days)
             expect(freeUntil).toBeGreaterThanOrEqual(before + GRACE_PERIOD_MS);
             expect(freeUntil).toBeLessThanOrEqual(after + GRACE_PERIOD_MS);
+        });
+
+        it("should deny user in deny list after auto-claiming unknown app via publisher", async () => {
+            const emptyCache: AppsCache = { updatedAt: Date.now(), apps: {} };
+            mockCacheManager.getAppsCache.mockResolvedValue(emptyCache);
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    org_1: { flags: 0, publishers: ["Contoso"] },
+                },
+            });
+            mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                updatedAt: Date.now(),
+                orgs: {
+                    org_1: { allow: [], deny: ["denied@contoso.com"] },
+                },
+            });
+            mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+
+            const result = await PermissionChecker.checkPermission("unknown-app", "denied@contoso.com", "Contoso");
+
+            expect(mockCacheManager.addOrganizationApp).toHaveBeenCalled();
+            expect(result).toEqual({
+                allowed: false,
+                error: {
+                    code: "USER_NOT_AUTHORIZED",
+                    gitEmail: "denied@contoso.com",
+                },
+            });
+        });
+
+        it("should auto-claim user via domain when auto-claiming unknown app via publisher", async () => {
+            const emptyCache: AppsCache = { updatedAt: Date.now(), apps: {} };
+            mockCacheManager.getAppsCache.mockResolvedValue(emptyCache);
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    org_1: { flags: 0, publishers: ["Contoso"], domains: ["contoso.com"] },
+                },
+            });
+            mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                updatedAt: Date.now(),
+                orgs: {
+                    org_1: { allow: [], deny: [] },
+                },
+            });
+            mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+            mockCacheManager.addUserToOrganizationAllowList.mockResolvedValue({ added: true, alreadyPresent: false });
+
+            const result = await PermissionChecker.checkPermission("unknown-app", "new.user@contoso.com", "Contoso");
+
+            expect(mockCacheManager.addOrganizationApp).toHaveBeenCalled();
+            expect(mockCacheManager.addUserToOrganizationAllowList).toHaveBeenCalledWith("org_1", "new.user@contoso.com");
+            expect(result).toEqual({ allowed: true });
+        });
+
+        describe("unknown user with publisher-matched app", () => {
+            let mockUnknownUserLogger: jest.SpyInstance;
+
+            beforeEach(() => {
+                const UnknownUserLoggerModule = require("../../src/permission/UnknownUserLogger");
+                mockUnknownUserLogger = jest.spyOn(UnknownUserLoggerModule.UnknownUserLogger, "logAttempt");
+            });
+
+            afterEach(() => {
+                mockUnknownUserLogger.mockRestore();
+            });
+
+            it("should give user grace period when unknown user uses publisher-matched app", async () => {
+                const now = Date.now();
+                mockUnknownUserLogger.mockResolvedValue(now); // First seen = now
+
+                const emptyCache: AppsCache = { updatedAt: Date.now(), apps: {} };
+                mockCacheManager.getAppsCache.mockResolvedValue(emptyCache);
+                mockCacheManager.getSettingsCache.mockResolvedValue({
+                    updatedAt: 0,
+                    orgs: {
+                        org_1: { flags: 0, publishers: ["Contoso"] },
+                    },
+                });
+                mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+                mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                    updatedAt: Date.now(),
+                    orgs: {
+                        org_1: { allow: [], deny: [] },
+                    },
+                });
+                mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+
+                const result = await PermissionChecker.checkPermission("unknown-app", "unknown@other.com", "Contoso");
+
+                expect(mockCacheManager.addOrganizationApp).toHaveBeenCalled();
+                expect(result.allowed).toBe(true);
+                expect((result as any).warning).toBeDefined();
+                expect((result as any).warning.code).toBe("ORG_GRACE_PERIOD");
+            });
+
+            it("should deny user when grace period expired for publisher-matched app", async () => {
+                const twentyDaysAgo = Date.now() - 20 * 24 * 60 * 60 * 1000;
+                mockUnknownUserLogger.mockResolvedValue(twentyDaysAgo); // First seen = 20 days ago
+
+                const emptyCache: AppsCache = { updatedAt: Date.now(), apps: {} };
+                mockCacheManager.getAppsCache.mockResolvedValue(emptyCache);
+                mockCacheManager.getSettingsCache.mockResolvedValue({
+                    updatedAt: 0,
+                    orgs: {
+                        org_1: { flags: 0, publishers: ["Contoso"] },
+                    },
+                });
+                mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+                mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                    updatedAt: Date.now(),
+                    orgs: {
+                        org_1: { allow: [], deny: [] },
+                    },
+                });
+                mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+
+                const result = await PermissionChecker.checkPermission("unknown-app", "unknown@other.com", "Contoso");
+
+                expect(mockCacheManager.addOrganizationApp).toHaveBeenCalled();
+                expect(result).toEqual({
+                    allowed: false,
+                    error: {
+                        code: "ORG_GRACE_EXPIRED",
+                        gitEmail: "unknown@other.com",
+                    },
+                });
+            });
         });
     });
 
@@ -98,7 +429,7 @@ describe("PermissionChecker", () => {
     // =========================================================================
     describe("Guard 3: Orphaned app", () => {
         it("should always return warning with timeRemaining for valid grace period", async () => {
-            const freeUntil = Date.now() + GRACE_PERIOD_MS; // Full 5 days remaining
+            const freeUntil = Date.now() + GRACE_PERIOD_MS; // Full 15 days remaining
             const cache: AppsCache = {
                 updatedAt: Date.now(),
                 apps: {
@@ -116,42 +447,60 @@ describe("PermissionChecker", () => {
         });
 
         it("should include correct timeRemaining in warning", async () => {
+            // Use timestamps after the floor to test core logic
+            const baseTime = MINIMUM_GRACE_PERIOD_END + 86400000; // 1 day after floor
             const timeRemaining = 1 * 24 * 60 * 60 * 1000; // 1 day
-            const freeUntil = Date.now() + timeRemaining;
+            const freeUntil = baseTime + timeRemaining;
             const cache: AppsCache = {
-                updatedAt: Date.now(),
+                updatedAt: baseTime,
                 apps: {
                     "orphaned-app": { freeUntil },
                 },
             };
             mockCacheManager.getAppsCache.mockResolvedValue(cache);
 
-            const result = await PermissionChecker.checkPermission("orphaned-app", "user@example.com");
+            // Mock Date.now to return baseTime for consistent testing
+            const originalNow = Date.now;
+            Date.now = () => baseTime;
+            try {
+                const result = await PermissionChecker.checkPermission("orphaned-app", "user@example.com");
 
-            expect(result.allowed).toBe(true);
-            expect((result as any).warning).toBeDefined();
-            expect((result as any).warning.code).toBe("APP_GRACE_PERIOD");
-            // timeRemaining should be approximately what we set (allowing for test execution time)
-            expect((result as any).warning.timeRemaining).toBeLessThanOrEqual(timeRemaining);
-            expect((result as any).warning.timeRemaining).toBeGreaterThan(timeRemaining - 1000);
+                expect(result.allowed).toBe(true);
+                expect((result as any).warning).toBeDefined();
+                expect((result as any).warning.code).toBe("APP_GRACE_PERIOD");
+                // timeRemaining should be approximately what we set (allowing for test execution time)
+                expect((result as any).warning.timeRemaining).toBeLessThanOrEqual(timeRemaining);
+                expect((result as any).warning.timeRemaining).toBeGreaterThan(timeRemaining - 1000);
+            } finally {
+                Date.now = originalNow;
+            }
         });
 
         it("should deny access after grace period expired", async () => {
-            const freeUntil = Date.now() - 1000; // Expired 1 second ago
+            // Use timestamps after the floor to test expiry logic
+            const baseTime = MINIMUM_GRACE_PERIOD_END + 86400000; // 1 day after floor
+            const freeUntil = baseTime - 1000; // Expired 1 second before baseTime
             const cache: AppsCache = {
-                updatedAt: Date.now(),
+                updatedAt: baseTime,
                 apps: {
                     "orphaned-app": { freeUntil },
                 },
             };
             mockCacheManager.getAppsCache.mockResolvedValue(cache);
 
-            const result = await PermissionChecker.checkPermission("orphaned-app", "user@example.com");
+            // Mock Date.now to return baseTime for consistent testing
+            const originalNow = Date.now;
+            Date.now = () => baseTime;
+            try {
+                const result = await PermissionChecker.checkPermission("orphaned-app", "user@example.com");
 
-            expect(result).toEqual({
-                allowed: false,
-                error: { code: "GRACE_EXPIRED" },
-            });
+                expect(result).toEqual({
+                    allowed: false,
+                    error: { code: "GRACE_EXPIRED" },
+                });
+            } finally {
+                Date.now = originalNow;
+            }
         });
 
         it("should not require user email for orphaned app check", async () => {
@@ -167,6 +516,191 @@ describe("PermissionChecker", () => {
             const result = await PermissionChecker.checkPermission("orphaned-app", undefined);
 
             expect(result.allowed).toBe(true);
+        });
+
+        it("should claim orphaned app when publisher matches and allow user in allow list", async () => {
+            const freeUntil = Date.now() + GRACE_PERIOD_MS;
+            const cache: AppsCache = {
+                updatedAt: Date.now(),
+                apps: {
+                    "orphaned-app": { freeUntil, publisher: "Contoso" },
+                },
+            };
+            mockCacheManager.getAppsCache.mockResolvedValue(cache);
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    org_1: { flags: 0, publishers: ["Contoso"] },
+                },
+            });
+            mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                updatedAt: Date.now(),
+                orgs: {
+                    org_1: { allow: ["member@contoso.com"], deny: [] },
+                },
+            });
+            mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+
+            const result = await PermissionChecker.checkPermission("orphaned-app", "member@contoso.com", "Contoso");
+
+            expect(mockCacheManager.addOrganizationApp).toHaveBeenCalledWith("orphaned-app", "org_1", freeUntil, "Contoso", undefined);
+            expect(result).toEqual({ allowed: true });
+        });
+
+        it("should deny user in deny list after claiming orphaned app via publisher", async () => {
+            const freeUntil = Date.now() + GRACE_PERIOD_MS;
+            const cache: AppsCache = {
+                updatedAt: Date.now(),
+                apps: {
+                    "orphaned-app": { freeUntil, publisher: "Contoso" },
+                },
+            };
+            mockCacheManager.getAppsCache.mockResolvedValue(cache);
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    org_1: { flags: 0, publishers: ["Contoso"] },
+                },
+            });
+            mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                updatedAt: Date.now(),
+                orgs: {
+                    org_1: { allow: [], deny: ["denied@contoso.com"] },
+                },
+            });
+            mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+
+            const result = await PermissionChecker.checkPermission("orphaned-app", "denied@contoso.com", "Contoso");
+
+            expect(mockCacheManager.addOrganizationApp).toHaveBeenCalled();
+            expect(result).toEqual({
+                allowed: false,
+                error: {
+                    code: "USER_NOT_AUTHORIZED",
+                    gitEmail: "denied@contoso.com",
+                },
+            });
+        });
+
+        it("should auto-claim user via domain when claiming orphaned app via publisher", async () => {
+            const freeUntil = Date.now() + GRACE_PERIOD_MS;
+            const cache: AppsCache = {
+                updatedAt: Date.now(),
+                apps: {
+                    "orphaned-app": { freeUntil, publisher: "Contoso" },
+                },
+            };
+            mockCacheManager.getAppsCache.mockResolvedValue(cache);
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    org_1: { flags: 0, publishers: ["Contoso"], domains: ["contoso.com"] },
+                },
+            });
+            mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                updatedAt: Date.now(),
+                orgs: {
+                    org_1: { allow: [], deny: [] },
+                },
+            });
+            mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+            mockCacheManager.addUserToOrganizationAllowList.mockResolvedValue({ added: true, alreadyPresent: false });
+
+            const result = await PermissionChecker.checkPermission("orphaned-app", "new.user@contoso.com", "Contoso");
+
+            expect(mockCacheManager.addOrganizationApp).toHaveBeenCalled();
+            expect(mockCacheManager.addUserToOrganizationAllowList).toHaveBeenCalledWith("org_1", "new.user@contoso.com");
+            expect(result).toEqual({ allowed: true });
+        });
+
+        describe("unknown user with orphaned publisher-matched app", () => {
+            let mockUnknownUserLogger: jest.SpyInstance;
+
+            beforeEach(() => {
+                const UnknownUserLoggerModule = require("../../src/permission/UnknownUserLogger");
+                mockUnknownUserLogger = jest.spyOn(UnknownUserLoggerModule.UnknownUserLogger, "logAttempt");
+            });
+
+            afterEach(() => {
+                mockUnknownUserLogger.mockRestore();
+            });
+
+            it("should give user grace period when unknown user uses orphaned publisher-matched app", async () => {
+                const now = Date.now();
+                mockUnknownUserLogger.mockResolvedValue(now); // First seen = now
+
+                const freeUntil = Date.now() + GRACE_PERIOD_MS;
+                const cache: AppsCache = {
+                    updatedAt: Date.now(),
+                    apps: {
+                        "orphaned-app": { freeUntil, publisher: "Contoso" },
+                    },
+                };
+                mockCacheManager.getAppsCache.mockResolvedValue(cache);
+                mockCacheManager.getSettingsCache.mockResolvedValue({
+                    updatedAt: 0,
+                    orgs: {
+                        org_1: { flags: 0, publishers: ["Contoso"] },
+                    },
+                });
+                mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+                mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                    updatedAt: Date.now(),
+                    orgs: {
+                        org_1: { allow: [], deny: [] },
+                    },
+                });
+                mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+
+                const result = await PermissionChecker.checkPermission("orphaned-app", "unknown@other.com", "Contoso");
+
+                expect(mockCacheManager.addOrganizationApp).toHaveBeenCalled();
+                expect(result.allowed).toBe(true);
+                expect((result as any).warning).toBeDefined();
+                expect((result as any).warning.code).toBe("ORG_GRACE_PERIOD");
+            });
+
+            it("should deny user when grace period expired for orphaned publisher-matched app", async () => {
+                const twentyDaysAgo = Date.now() - 20 * 24 * 60 * 60 * 1000;
+                mockUnknownUserLogger.mockResolvedValue(twentyDaysAgo); // First seen = 20 days ago
+
+                const freeUntil = Date.now() + GRACE_PERIOD_MS;
+                const cache: AppsCache = {
+                    updatedAt: Date.now(),
+                    apps: {
+                        "orphaned-app": { freeUntil, publisher: "Contoso" },
+                    },
+                };
+                mockCacheManager.getAppsCache.mockResolvedValue(cache);
+                mockCacheManager.getSettingsCache.mockResolvedValue({
+                    updatedAt: 0,
+                    orgs: {
+                        org_1: { flags: 0, publishers: ["Contoso"] },
+                    },
+                });
+                mockCacheManager.addOrganizationApp.mockResolvedValue(undefined);
+                mockCacheManager.getOrgMembersCache.mockResolvedValue({
+                    updatedAt: Date.now(),
+                    orgs: {
+                        org_1: { allow: [], deny: [] },
+                    },
+                });
+                mockCacheManager.getBlockedCache.mockResolvedValue({ updatedAt: Date.now(), orgs: {} });
+
+                const result = await PermissionChecker.checkPermission("orphaned-app", "unknown@other.com", "Contoso");
+
+                expect(mockCacheManager.addOrganizationApp).toHaveBeenCalled();
+                expect(result).toEqual({
+                    allowed: false,
+                    error: {
+                        code: "ORG_GRACE_EXPIRED",
+                        gitEmail: "unknown@other.com",
+                    },
+                });
+            });
         });
     });
 
@@ -249,7 +783,7 @@ describe("PermissionChecker", () => {
 
             expect(result).toEqual({
                 allowed: false,
-                error: { code: "USER_NOT_AUTHORIZED" },
+                error: { code: "GIT_EMAIL_REQUIRED" },
             });
         });
     });
@@ -286,6 +820,30 @@ describe("PermissionChecker", () => {
 
             const result = await PermissionChecker.checkPermission("org-app", "member@example.com");
 
+            expect(result).toEqual({ allowed: true });
+        });
+
+        it("should auto-add user when email domain matches approved organization domain", async () => {
+            const cache: AppsCache = {
+                updatedAt: Date.now(),
+                apps: {
+                    "org-app": { ownerId: "org-123" },
+                },
+            };
+            mockCacheManager.getAppsCache.mockResolvedValue(cache);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue(orgMembersCache);
+            mockCacheManager.getBlockedCache.mockResolvedValue(emptyBlockedCache);
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    "org-123": { flags: 0, domains: ["contoso.com"] },
+                },
+            });
+            mockCacheManager.addUserToOrganizationAllowList.mockResolvedValue({ added: true, alreadyPresent: false });
+
+            const result = await PermissionChecker.checkPermission("org-app", "new.user@contoso.com");
+
+            expect(mockCacheManager.addUserToOrganizationAllowList).toHaveBeenCalledWith("org-123", "new.user@contoso.com");
             expect(result).toEqual({ allowed: true });
         });
 
@@ -348,7 +906,7 @@ describe("PermissionChecker", () => {
 
             expect(result).toEqual({
                 allowed: false,
-                error: { code: "USER_NOT_AUTHORIZED" },
+                error: { code: "GIT_EMAIL_REQUIRED" },
             });
         });
 
@@ -413,7 +971,7 @@ describe("PermissionChecker", () => {
             mockUnknownUserLogger.mockRestore();
         });
 
-        it("should allow access with warning when user first seen (within 7-day grace)", async () => {
+        it("should allow access with warning when user first seen (within 15-day grace)", async () => {
             const now = Date.now();
             mockUnknownUserLogger.mockResolvedValue(now); // First seen = now
 
@@ -450,12 +1008,12 @@ describe("PermissionChecker", () => {
                 // Should have ~4 days remaining
                 const daysRemaining = result.warning.timeRemaining! / (24 * 60 * 60 * 1000);
                 expect(daysRemaining).toBeGreaterThan(3.9);
-                expect(daysRemaining).toBeLessThan(4.1);
+                expect(daysRemaining).toBeLessThan(12.1);
             }
         });
 
-        it("should deny access when user seen 8 days ago (grace expired)", async () => {
-            const eightDaysAgo = Date.now() - (8 * 24 * 60 * 60 * 1000);
+        it("should deny access when user seen 18 days ago (grace expired)", async () => {
+            const eightDaysAgo = Date.now() - (18 * 24 * 60 * 60 * 1000);
             mockUnknownUserLogger.mockResolvedValue(eightDaysAgo); // First seen = 8 days ago
 
             mockCacheManager.getAppsCache.mockResolvedValue(cache);
@@ -467,7 +1025,7 @@ describe("PermissionChecker", () => {
             expect(result).toEqual({
                 allowed: false,
                 error: {
-                    code: "USER_NOT_AUTHORIZED",
+                    code: "ORG_GRACE_EXPIRED",
                     gitEmail: "stranger@example.com",
                 },
             });
@@ -525,6 +1083,89 @@ describe("PermissionChecker", () => {
             });
             // Should not call UnknownUserLogger for denied users
             expect(mockUnknownUserLogger).not.toHaveBeenCalled();
+        });
+    });
+
+    // =========================================================================
+    // DENY_UNKNOWN_DOMAINS Flag
+    // =========================================================================
+    describe("DENY_UNKNOWN_DOMAINS flag", () => {
+        const orgMembersCache: OrgMembersCache = {
+            updatedAt: Date.now(),
+            orgs: {
+                "org-123": {
+                    allow: ["member@example.com"],
+                    deny: ["denied@example.com"],
+                },
+            },
+        };
+
+        const emptyBlockedCache: BlockedCache = {
+            updatedAt: Date.now(),
+            orgs: {},
+        };
+
+        const cache: AppsCache = {
+            updatedAt: Date.now(),
+            apps: {
+                "org-app": { ownerId: "org-123" },
+            },
+        };
+
+        it("should auto-deny and add to deny list when DENY_UNKNOWN_DOMAINS flag is set and domain doesn't match", async () => {
+            mockCacheManager.getAppsCache.mockResolvedValue(cache);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue(orgMembersCache);
+            mockCacheManager.getBlockedCache.mockResolvedValue(emptyBlockedCache);
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    "org-123": { flags: 2, domains: ["contoso.com"] }, // DENY_UNKNOWN_DOMAINS = 2
+                },
+            });
+            mockCacheManager.addUserToOrganizationDenyList.mockResolvedValue({ added: true });
+
+            const result = await PermissionChecker.checkPermission("org-app", "stranger@other-domain.com");
+
+            // Should add user to deny list
+            expect(mockCacheManager.addUserToOrganizationDenyList).toHaveBeenCalledWith("org-123", "stranger@other-domain.com");
+            // Should deny access
+            expect(result).toEqual({
+                allowed: false,
+                error: {
+                    code: "USER_NOT_AUTHORIZED",
+                    gitEmail: "stranger@other-domain.com",
+                },
+            });
+        });
+
+        it("should use grace period (not auto-deny) when DENY_UNKNOWN_DOMAINS flag is NOT set", async () => {
+            let mockUnknownUserLogger: jest.SpyInstance;
+            const UnknownUserLoggerModule = require("../../src/permission/UnknownUserLogger");
+            mockUnknownUserLogger = jest.spyOn(UnknownUserLoggerModule.UnknownUserLogger, "logAttempt");
+            mockUnknownUserLogger.mockResolvedValue(Date.now()); // First seen = now
+
+            mockCacheManager.getAppsCache.mockResolvedValue(cache);
+            mockCacheManager.getOrgMembersCache.mockResolvedValue(orgMembersCache);
+            mockCacheManager.getBlockedCache.mockResolvedValue(emptyBlockedCache);
+            mockCacheManager.getSettingsCache.mockResolvedValue({
+                updatedAt: 0,
+                orgs: {
+                    "org-123": { flags: 0, domains: ["contoso.com"] }, // No DENY_UNKNOWN_DOMAINS flag
+                },
+            });
+
+            const result = await PermissionChecker.checkPermission("org-app", "stranger@other-domain.com");
+
+            // Should NOT add user to deny list
+            expect(mockCacheManager.addUserToOrganizationDenyList).not.toHaveBeenCalled();
+            // Should allow with grace period warning (existing behavior)
+            expect(result.allowed).toBe(true);
+            expect(result).toHaveProperty("warning");
+            if ("warning" in result) {
+                expect(result.warning.code).toBe("ORG_GRACE_PERIOD");
+            }
+
+            mockUnknownUserLogger.mockRestore();
         });
     });
 
@@ -751,9 +1392,9 @@ describe("PermissionChecker", () => {
         beforeEach(() => {
             // Mock UnknownUserLogger.logAttempt to return a timestamp beyond grace period
             const UnknownUserLoggerModule = require("../../src/permission/UnknownUserLogger");
-            const eightDaysAgo = Date.now() - (8 * 24 * 60 * 60 * 1000);
+            const eighteenDaysAgo = Date.now() - (18 * 24 * 60 * 60 * 1000);
             mockUnknownUserLogger = jest.spyOn(UnknownUserLoggerModule.UnknownUserLogger, "logAttempt")
-                .mockResolvedValue(eightDaysAgo); // Grace expired
+                .mockResolvedValue(eighteenDaysAgo); // Grace expired
         });
 
         afterEach(() => {

@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import { parse } from "comment-json";
 import { Uri } from "vscode";
 import { ALRange } from "./types/ALRange";
 
@@ -23,7 +24,7 @@ export class ALAppManifest {
     public static tryCreate(uri: Uri): ALAppManifest | undefined {
         try {
             const contents = fs.readFileSync(uri.fsPath).toString();
-            const appObj = JSON.parse(contents.replace(/^\uFEFF/, ""));
+            const appObj = parse(contents.replace(/^\uFEFF/, ""));
 
             const expectProperty = (property: string, type = "string") =>
                 appObj.hasOwnProperty(property) && typeof appObj[property] === type;

@@ -33,22 +33,21 @@ export interface PermissionHttpRequest extends AzureHttpRequest {
  * @throws ErrorResponse with 400 if Ninja-App-Id header is missing
  */
 export async function bindPermission(azureRequest: AzureHttpRequest): Promise<void> {
-    const appId = azureRequest.headers.get("Ninja-App-Id")?.trim();
     const gitBranch = azureRequest.headers.get("Ninja-Git-Branch")?.trim() || undefined;
+    const appId = azureRequest.headers.get("Ninja-App-Id")?.trim();
+    const publisher = azureRequest.headers.get("Ninja-App-Publisher")?.trim() || undefined;
+    const appName = azureRequest.headers.get("Ninja-App-Name")?.trim() || undefined;
 
     // Ninja-App-Id is required
     if (!appId) {
-        throw new ErrorResponse(
-            "Ninja-App-Id header is required",
-            HttpStatusCode.ClientError_400_BadRequest
-        );
+        throw new ErrorResponse("Ninja-App-Id header is required. Please use version 3.0.4 or higher.", HttpStatusCode.ClientError_400_BadRequest);
     }
 
     // Get user email from already-bound user info (from bindUser)
     const userEmail = (azureRequest as any).user?.email as string | undefined;
 
     // Perform permission check
-    const result = await PermissionChecker.checkPermission(appId, userEmail);
+    const result = await PermissionChecker.checkPermission(appId, userEmail, publisher, appName);
 
     // Bind permission info to request
     const permissionInfo: PermissionInfo = {
@@ -71,10 +70,7 @@ export function enforcePermission(azureRequest: AzureHttpRequest): void {
     const permission = (azureRequest as PermissionHttpRequest)[PermissionInfoSymbol];
 
     if (!permission) {
-        throw new ErrorResponse(
-            "Permission check not performed",
-            HttpStatusCode.ServerError_500_InternalServerError
-        );
+        throw new ErrorResponse("Permission check not performed", HttpStatusCode.ServerError_500_InternalServerError);
     }
 
     if (!permission.result.allowed) {
@@ -83,10 +79,7 @@ export function enforcePermission(azureRequest: AzureHttpRequest): void {
             error: (permission.result as { error: any }).error,
         });
 
-        throw new ErrorResponse(
-            errorBody,
-            HttpStatusCode.ClientError_403_Forbidden
-        );
+        throw new ErrorResponse(errorBody, HttpStatusCode.ClientError_403_Forbidden);
     }
 }
 

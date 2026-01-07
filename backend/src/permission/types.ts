@@ -43,6 +43,12 @@ export interface AppsCacheEntry {
      * If present (and no other fields): this is an organization app.
      */
     ownerId?: string;
+
+    /**
+     * Publisher name (metadata).
+     * Used for diagnostics and orphan triage.
+     */
+    publisher?: string;
 }
 
 /**
@@ -108,6 +114,42 @@ export interface BlockedCache {
     orgs: Record<string, BlockedCacheEntry>;
 }
 
+
+/**
+ * Settings cache entry - stores organization-level flags.
+ */
+export interface SettingsCacheEntry {
+    /** Bitwise flags for organization settings */
+    flags: number;
+
+    /** Approved publisher names used for auto-claiming unknown apps */
+    publishers?: string[];
+
+    /** Approved email domains used for auto-claiming unknown users */
+    domains?: string[];
+}
+
+/**
+ * Structure of settings.json cache file.
+ */
+export interface SettingsCache {
+    /** Last update timestamp */
+    updatedAt: number;
+
+    /** Map of orgId to settings */
+    orgs: Record<string, SettingsCacheEntry>;
+}
+
+/**
+ * Settings flags (bit positions).
+ */
+export const SettingsFlags = {
+    /** Bit 0: Skip user check for this organization */
+    SKIP_USER_CHECK: 1,
+    /** Bit 1: Automatically deny users from unknown domains */
+    DENY_UNKNOWN_DOMAINS: 2,
+} as const;
+
 // =============================================================================
 // Permission Result Types
 // =============================================================================
@@ -123,9 +165,11 @@ export type WarningCode = "APP_GRACE_PERIOD" | "ORG_GRACE_PERIOD";
 export type ErrorCode =
     | "GRACE_EXPIRED"
     | "USER_NOT_AUTHORIZED"
+    | "GIT_EMAIL_REQUIRED"
     | "ORG_FLAGGED"
     | "SUBSCRIPTION_CANCELLED"
-    | "PAYMENT_FAILED";
+    | "PAYMENT_FAILED"
+    | "ORG_GRACE_EXPIRED";
 
 /**
  * Permission warning included in successful responses.
@@ -183,8 +227,8 @@ export interface PermissionInfo {
 // Constants
 // =============================================================================
 
-/** Grace period duration in milliseconds (5 days) */
-export const GRACE_PERIOD_MS = 5 * 24 * 60 * 60 * 1000;
+/** Grace period duration in milliseconds (15 days) */
+export const GRACE_PERIOD_MS = 15 * 24 * 60 * 60 * 1000;
 
 /** Default TTL for apps and org-members caches (15 minutes) */
 export const DEFAULT_CACHE_TTL_MS = 15 * 60 * 1000;

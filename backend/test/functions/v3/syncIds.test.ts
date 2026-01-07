@@ -152,52 +152,6 @@ describe("syncIds", () => {
             expect(result._ranges).toEqual([{ from: 1, to: 100 }]);
         });
 
-        it("should sort consumptions in ascending order", async () => {
-            mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn(null));
-            const request = createMockRequest({}, {
-                body: { ids: { codeunit: [5, 1, 3, 2, 4] } },
-            });
-
-            const result = await endpointConfig.POST(request);
-
-            expect(result.codeunit).toEqual([1, 2, 3, 4, 5]);
-        });
-
-        it("should not include internal properties in response", async () => {
-            mockBlobInstance.optimisticUpdate.mockResolvedValue({
-                _authorization: { key: "key" },
-                _ranges: [{ from: 1, to: 100 }],
-                codeunit: [1],
-            });
-            const request = createMockRequest({}, {
-                body: { ids: { codeunit: [1] } },
-            });
-
-            const result = await endpointConfig.POST(request);
-
-            expect(result).not.toHaveProperty("_authorization");
-            expect(result).not.toHaveProperty("_ranges");
-            expect(result).toEqual({ codeunit: [1] });
-        });
-
-        it("should handle multiple object types", async () => {
-            mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn(null));
-            const request = createMockRequest({}, {
-                body: {
-                    ids: {
-                        codeunit: [1, 2],
-                        table: [100, 200],
-                        page: [50],
-                    },
-                },
-            });
-
-            const result = await endpointConfig.POST(request);
-
-            expect(result.codeunit).toEqual([1, 2]);
-            expect(result.table).toEqual([100, 200]);
-            expect(result.page).toEqual([50]);
-        });
     });
 
     describe("PATCH handler - merge sync", () => {
@@ -327,23 +281,6 @@ describe("syncIds", () => {
     });
 
     describe("extended type handling", () => {
-        it("should handle extended type format in POST", async () => {
-            mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn(null));
-            const request = createMockRequest({}, {
-                body: {
-                    ids: {
-                        "table_50000": [1, 2, 3],
-                        "enum_50001": [10, 20],
-                    },
-                },
-            });
-
-            const result = await endpointConfig.POST(request);
-
-            expect(result["table_50000"]).toEqual([1, 2, 3]);
-            expect(result["enum_50001"]).toEqual([10, 20]);
-        });
-
         it("should handle extended type format in PATCH", async () => {
             let capturedUpdateFn: Function;
             mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => {

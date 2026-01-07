@@ -29,6 +29,11 @@ export function createGetNextUpdateCallback(params: GetNextUpdateParams) {
         }
 
         app._ranges = params.appRanges;
+
+        // Guard against invalid id - prevents data corruption
+        if (typeof params.context.id !== "number" || !Number.isFinite(params.context.id)) {
+            return app;
+        }
         const consumption = app[params.type];
 
         // No ids consumed yet, consume the first one and exit

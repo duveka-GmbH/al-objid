@@ -11,6 +11,8 @@ import {
     isEmailInAllowList,
     isOrgBlocked,
     mapBlockReason,
+    MINIMUM_GRACE_PERIOD_END,
+    getEffectiveFreeUntil,
 } from "../../src/permission/decisions";
 import {
     AppsCache,
@@ -112,6 +114,15 @@ describe("decisions", () => {
 
             expect(isAppOrphaned(app)).toBe(false);
         });
+
+        it("should return false when app has both freeUntil and ownerId (claimed org app)", () => {
+            const app: AppsCacheEntry = {
+                freeUntil: Date.now() + 86400000,
+                ownerId: "org-123",
+            };
+
+            expect(isAppOrphaned(app)).toBe(false);
+        });
     });
 
     // =========================================================================
@@ -173,38 +184,111 @@ describe("decisions", () => {
     });
 
     // =========================================================================
+    // getEffectiveFreeUntil
+    // =========================================================================
+    describe("getEffectiveFreeUntil", () => {
+        it("should return floor date when freeUntil is before floor", () => {
+            const beforeFloor = Date.UTC(2025, 11, 1); // Dec 1, 2025
+
+            expect(getEffectiveFreeUntil(beforeFloor)).toBe(MINIMUM_GRACE_PERIOD_END);
+        });
+
+        it("should return floor date when freeUntil is exactly at floor", () => {
+            expect(getEffectiveFreeUntil(MINIMUM_GRACE_PERIOD_END)).toBe(MINIMUM_GRACE_PERIOD_END);
+        });
+
+        it("should return original freeUntil when after floor", () => {
+            const afterFloor = Date.UTC(2026, 1, 1); // Feb 1, 2026
+
+            expect(getEffectiveFreeUntil(afterFloor)).toBe(afterFloor);
+        });
+
+        it("should handle freeUntil far in the past", () => {
+            const farPast = Date.UTC(2020, 0, 1); // Jan 1, 2020
+
+            expect(getEffectiveFreeUntil(farPast)).toBe(MINIMUM_GRACE_PERIOD_END);
+        });
+
+        it("should handle freeUntil far in the future", () => {
+            const farFuture = Date.UTC(2030, 0, 1); // Jan 1, 2030
+
+            expect(getEffectiveFreeUntil(farFuture)).toBe(farFuture);
+        });
+    });
+
+    // =========================================================================
     // isGracePeriodExpired
     // =========================================================================
     describe("isGracePeriodExpired", () => {
-        it("should return true when freeUntil is in the past", () => {
-            const pastTime = Date.now() - 1000;
+        // Use timestamps after the floor to test core comparison logic
+        const AFTER_FLOOR = Date.UTC(2026, 1, 1); // Feb 1, 2026
 
-            expect(isGracePeriodExpired(pastTime)).toBe(true);
+        it("should return true when freeUntil is in the past (after floor)", () => {
+            const freeUntil = AFTER_FLOOR;
+            const now = AFTER_FLOOR + 86400000; // 1 day later
+
+            expect(isGracePeriodExpired(freeUntil, now)).toBe(true);
         });
 
-        it("should return false when freeUntil is in the future", () => {
-            const futureTime = Date.now() + 86400000;
-
-            expect(isGracePeriodExpired(futureTime)).toBe(false);
-        });
-
-        it("should return false when freeUntil equals now (boundary)", () => {
-            const now = 1000000;
-
-            // When freeUntil equals now, grace period hasn't expired yet (< not <=)
-            expect(isGracePeriodExpired(now, now)).toBe(false);
-        });
-
-        it("should use provided now parameter for comparison", () => {
-            const freeUntil = 2000;
-            const now = 1000;
+        it("should return false when freeUntil is in the future (after floor)", () => {
+            const freeUntil = AFTER_FLOOR + 86400000; // 1 day after baseline
+            const now = AFTER_FLOOR;
 
             expect(isGracePeriodExpired(freeUntil, now)).toBe(false);
         });
 
-        it("should return true when freeUntil is exactly one less than now", () => {
-            const now = 1000;
-            const freeUntil = 999;
+        it("should return false when freeUntil equals now (boundary, after floor)", () => {
+            const time = AFTER_FLOOR;
+
+            // When freeUntil equals now, grace period hasn't expired yet (< not <=)
+            expect(isGracePeriodExpired(time, time)).toBe(false);
+        });
+
+        it("should use provided now parameter for comparison", () => {
+            const freeUntil = AFTER_FLOOR + 2000;
+            const now = AFTER_FLOOR + 1000;
+
+            expect(isGracePeriodExpired(freeUntil, now)).toBe(false);
+        });
+
+        it("should return true when freeUntil is exactly one less than now (after floor)", () => {
+            const now = AFTER_FLOOR + 1000;
+            const freeUntil = AFTER_FLOOR + 999;
+
+            expect(isGracePeriodExpired(freeUntil, now)).toBe(true);
+        });
+
+        // Floor behavior tests
+        it("should return false when freeUntil before floor and now before floor", () => {
+            const freeUntil = Date.UTC(2025, 11, 1); // Dec 1, 2025
+            const now = Date.UTC(2025, 11, 15); // Dec 15, 2025
+
+            expect(isGracePeriodExpired(freeUntil, now)).toBe(false);
+        });
+
+        it("should return true when freeUntil before floor but now after floor", () => {
+            const freeUntil = Date.UTC(2025, 11, 1); // Dec 1, 2025
+            const now = Date.UTC(2026, 0, 20); // Jan 20, 2026
+
+            expect(isGracePeriodExpired(freeUntil, now)).toBe(true);
+        });
+
+        it("should return false when freeUntil at floor and now before floor", () => {
+            const now = Date.UTC(2026, 0, 1); // Jan 1, 2026
+
+            expect(isGracePeriodExpired(MINIMUM_GRACE_PERIOD_END, now)).toBe(false);
+        });
+
+        it("should return false when freeUntil after floor and now before freeUntil", () => {
+            const freeUntil = Date.UTC(2026, 1, 1); // Feb 1, 2026
+            const now = Date.UTC(2026, 0, 20); // Jan 20, 2026
+
+            expect(isGracePeriodExpired(freeUntil, now)).toBe(false);
+        });
+
+        it("should return true when freeUntil after floor but now after freeUntil", () => {
+            const freeUntil = Date.UTC(2026, 1, 1); // Feb 1, 2026
+            const now = Date.UTC(2026, 1, 15); // Feb 15, 2026
 
             expect(isGracePeriodExpired(freeUntil, now)).toBe(true);
         });
@@ -214,40 +298,74 @@ describe("decisions", () => {
     // calculateTimeRemaining
     // =========================================================================
     describe("calculateTimeRemaining", () => {
-        it("should return positive time remaining when not expired", () => {
-            const now = 1000;
-            const freeUntil = 5000;
+        // Use timestamps after the floor to test core calculation logic
+        const AFTER_FLOOR = Date.UTC(2026, 1, 1); // Feb 1, 2026
+
+        it("should return positive time remaining when not expired (after floor)", () => {
+            const now = AFTER_FLOOR;
+            const freeUntil = AFTER_FLOOR + 4000;
 
             expect(calculateTimeRemaining(freeUntil, now)).toBe(4000);
         });
 
-        it("should return zero when expired", () => {
-            const now = 5000;
-            const freeUntil = 1000;
+        it("should return zero when expired (after floor)", () => {
+            const now = AFTER_FLOOR + 4000;
+            const freeUntil = AFTER_FLOOR;
 
             expect(calculateTimeRemaining(freeUntil, now)).toBe(0);
         });
 
-        it("should return zero when freeUntil equals now", () => {
-            const now = 1000;
+        it("should return zero when freeUntil equals now (after floor)", () => {
+            const time = AFTER_FLOOR;
 
-            expect(calculateTimeRemaining(now, now)).toBe(0);
+            expect(calculateTimeRemaining(time, time)).toBe(0);
         });
 
         it("should never return negative values", () => {
-            const now = 10000;
-            const freeUntil = 1000;
+            const now = AFTER_FLOOR + 10000;
+            const freeUntil = AFTER_FLOOR;
 
             expect(calculateTimeRemaining(freeUntil, now)).toBeGreaterThanOrEqual(0);
         });
 
-        it("should use current time when now parameter is not provided", () => {
-            const futureTime = Date.now() + 10000;
+        it("should use current time when now parameter is not provided (freeUntil after floor)", () => {
+            // Use a timestamp far enough in the future to be after floor + 10000ms
+            const futureTime = AFTER_FLOOR + 10000;
 
-            const result = calculateTimeRemaining(futureTime);
+            const result = calculateTimeRemaining(futureTime, AFTER_FLOOR);
 
-            expect(result).toBeGreaterThan(0);
-            expect(result).toBeLessThanOrEqual(10000);
+            expect(result).toBe(10000);
+        });
+
+        // Floor behavior tests
+        it("should return time until floor when freeUntil before floor and now before floor", () => {
+            const freeUntil = Date.UTC(2025, 11, 1); // Dec 1, 2025
+            const now = Date.UTC(2025, 11, 15); // Dec 15, 2025
+            const expectedRemaining = MINIMUM_GRACE_PERIOD_END - now; // Time until Jan 15, 2026
+
+            expect(calculateTimeRemaining(freeUntil, now)).toBe(expectedRemaining);
+        });
+
+        it("should return zero when freeUntil before floor but now after floor", () => {
+            const freeUntil = Date.UTC(2025, 11, 1); // Dec 1, 2025
+            const now = Date.UTC(2026, 0, 20); // Jan 20, 2026
+
+            expect(calculateTimeRemaining(freeUntil, now)).toBe(0);
+        });
+
+        it("should return time until floor when freeUntil exactly at floor", () => {
+            const now = Date.UTC(2026, 0, 1); // Jan 1, 2026
+            const expectedRemaining = MINIMUM_GRACE_PERIOD_END - now; // 14 days
+
+            expect(calculateTimeRemaining(MINIMUM_GRACE_PERIOD_END, now)).toBe(expectedRemaining);
+        });
+
+        it("should return time until freeUntil when freeUntil after floor", () => {
+            const freeUntil = Date.UTC(2026, 1, 1); // Feb 1, 2026
+            const now = Date.UTC(2026, 0, 20); // Jan 20, 2026
+            const expectedRemaining = freeUntil - now;
+
+            expect(calculateTimeRemaining(freeUntil, now)).toBe(expectedRemaining);
         });
     });
 

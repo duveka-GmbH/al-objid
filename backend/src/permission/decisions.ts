@@ -17,6 +17,28 @@ import {
 } from "./types";
 
 // =============================================================================
+// Grace Period Floor Configuration
+// =============================================================================
+
+/**
+ * Minimum grace period end date: January 15th, 2026 at midnight UTC.
+ * All apps are guaranteed a grace period until at least this date.
+ * This allows customers extra time to set up their subscriptions.
+ */
+export const MINIMUM_GRACE_PERIOD_END = Date.UTC(2026, 0, 15); // Jan 15, 2026 00:00:00 UTC
+
+/**
+ * Calculate the effective freeUntil timestamp, applying the minimum grace period floor.
+ * Returns whichever is later: the actual freeUntil or MINIMUM_GRACE_PERIOD_END.
+ *
+ * @param freeUntil - The original grace period expiry timestamp
+ * @returns The effective freeUntil (at least MINIMUM_GRACE_PERIOD_END)
+ */
+export function getEffectiveFreeUntil(freeUntil: number): number {
+    return Math.max(freeUntil, MINIMUM_GRACE_PERIOD_END);
+}
+
+// =============================================================================
 // App Type Determination Functions
 // =============================================================================
 
@@ -38,7 +60,7 @@ export function isAppSponsored(app: AppsCacheEntry): boolean {
  * Check if an app is orphaned (unclaimed, has grace period).
  */
 export function isAppOrphaned(app: AppsCacheEntry): boolean {
-    return app.freeUntil !== undefined;
+    return app.freeUntil !== undefined && app.ownerId === undefined;
 }
 
 /**
@@ -66,7 +88,8 @@ export function isOrganizationApp(app: AppsCacheEntry): boolean {
  * @param now - Current timestamp (optional, defaults to Date.now())
  */
 export function isGracePeriodExpired(freeUntil: number, now: number = Date.now()): boolean {
-    return freeUntil < now;
+    const effectiveFreeUntil = getEffectiveFreeUntil(freeUntil);
+    return effectiveFreeUntil < now;
 }
 
 /**
@@ -77,7 +100,8 @@ export function isGracePeriodExpired(freeUntil: number, now: number = Date.now()
  * @returns Milliseconds remaining (0 if already expired)
  */
 export function calculateTimeRemaining(freeUntil: number, now: number = Date.now()): number {
-    return Math.max(0, freeUntil - now);
+    const effectiveFreeUntil = getEffectiveFreeUntil(freeUntil);
+    return Math.max(0, effectiveFreeUntil - now);
 }
 
 // =============================================================================

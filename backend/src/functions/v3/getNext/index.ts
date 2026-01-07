@@ -107,6 +107,14 @@ const post: SingleAppHttpHandler<GetNextRequest, GetNextResponse> = async (req) 
 
     // TODO If the app is unknown, we should respond immediately with 404, we should not go further. The front end should interpret this correctly and it should not depend on `hasConsumption` flag for anything
 
+    // Validate parameter combination: perRange + commit requires a valid require parameter
+    if (perRange && commit && typeof require !== "number") {
+        throw new ErrorResponse(
+            "The 'require' parameter must be a valid number when 'perRange' is true and 'commit' is true",
+            HttpStatusCode.ClientError_400_BadRequest
+        );
+    }
+
     const appInfo = req.app || {} as AppInfo;
     const hasConsumption = !!req.app;
 

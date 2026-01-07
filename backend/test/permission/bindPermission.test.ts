@@ -35,6 +35,8 @@ jest.mock("../../src/permission/PermissionChecker", () => ({
 function createMockRequest(options: {
     appId?: string | null;
     gitBranch?: string | null;
+    publisher?: string | null;
+    appName?: string | null;
     userEmail?: string;
 } = {}): AzureHttpRequest {
     const request: AzureHttpRequest = {
@@ -46,6 +48,12 @@ function createMockRequest(options: {
                 }
                 if (name === "Ninja-Git-Branch") {
                     return options.gitBranch !== null ? options.gitBranch ?? null : null;
+                }
+                if (name === "Ninja-App-Publisher" || name === "Ninja-App-Id-Publisher") {
+                    return options.publisher !== null ? options.publisher ?? null : null;
+                }
+                if (name === "Ninja-App-Name") {
+                    return options.appName !== null ? options.appName ?? null : null;
                 }
                 return null;
             }),
@@ -98,7 +106,7 @@ describe("bindPermission", () => {
 
                 // When/Then
                 await expect(bindPermission(request)).rejects.toMatchObject({
-                    message: "Ninja-App-Id header is required",
+                    message: "Ninja-App-Id header is required. Please use version 3.0.4 or higher.",
                     statusCode: HttpStatusCode.ClientError_400_BadRequest,
                 });
             });
@@ -109,7 +117,7 @@ describe("bindPermission", () => {
 
                 // When/Then
                 await expect(bindPermission(request)).rejects.toMatchObject({
-                    message: "Ninja-App-Id header is required",
+                    message: "Ninja-App-Id header is required. Please use version 3.0.4 or higher.",
                     statusCode: HttpStatusCode.ClientError_400_BadRequest,
                 });
             });
@@ -120,7 +128,7 @@ describe("bindPermission", () => {
 
                 // When/Then
                 await expect(bindPermission(request)).rejects.toMatchObject({
-                    message: "Ninja-App-Id header is required",
+                    message: "Ninja-App-Id header is required. Please use version 3.0.4 or higher.",
                     statusCode: HttpStatusCode.ClientError_400_BadRequest,
                 });
             });
@@ -136,6 +144,8 @@ describe("bindPermission", () => {
                 // Then
                 expect(mockPermissionChecker.checkPermission).toHaveBeenCalledWith(
                     "my-app-id",
+                    undefined,
+                    undefined,
                     undefined
                 );
             });
@@ -151,6 +161,8 @@ describe("bindPermission", () => {
                 // Then
                 expect(mockPermissionChecker.checkPermission).toHaveBeenCalledWith(
                     "test-app-123",
+                    undefined,
+                    undefined,
                     undefined
                 );
             });
@@ -225,7 +237,9 @@ describe("bindPermission", () => {
                 // Then
                 expect(mockPermissionChecker.checkPermission).toHaveBeenCalledWith(
                     "test-app",
-                    "user@example.com"
+                    "user@example.com",
+                    undefined,
+                    undefined
                 );
             });
 
@@ -240,6 +254,8 @@ describe("bindPermission", () => {
                 // Then
                 expect(mockPermissionChecker.checkPermission).toHaveBeenCalledWith(
                     "test-app",
+                    undefined,
+                    undefined,
                     undefined
                 );
             });
@@ -688,6 +704,8 @@ describe("Edge cases", () => {
         // Then
         expect(mockPermissionChecker.checkPermission).toHaveBeenCalledWith(
             "app-with-special_chars.123",
+            undefined,
+            undefined,
             undefined
         );
     });
@@ -702,7 +720,7 @@ describe("Edge cases", () => {
         await bindPermission(request);
 
         // Then
-        expect(mockPermissionChecker.checkPermission).toHaveBeenCalledWith(guid, undefined);
+        expect(mockPermissionChecker.checkPermission).toHaveBeenCalledWith(guid, undefined, undefined, undefined);
     });
 
     it("should handle branch names with slashes", async () => {
@@ -735,7 +753,9 @@ describe("Edge cases", () => {
         // Then
         expect(mockPermissionChecker.checkPermission).toHaveBeenCalledWith(
             "test-app",
-            "user+tag@example.com"
+            "user+tag@example.com",
+            undefined,
+            undefined
         );
     });
 

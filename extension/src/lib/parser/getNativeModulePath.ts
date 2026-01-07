@@ -11,7 +11,7 @@ function getPlatformIdentifier(): string {
 
     if (platform === "win32") {
         // Windows: use msvc for x64
-        return arch === "x64" ? "win32-x64-msvc" : `win32-${arch}`;
+        return arch === "x64" ? "win32-x64-msvc" : `win32-${arch}-msvc`;
     } else if (platform === "linux") {
         // Linux: use gnu toolchain for x64
         return arch === "x64" ? "linux-x64-gnu" : `linux-${arch}`;

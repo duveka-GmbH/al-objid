@@ -1,4 +1,4 @@
-import { window } from "vscode";
+import { window, env, Uri } from "vscode";
 import { LogLevel, Output } from "../features/Output";
 import { NinjaALRange } from "./types/NinjaALRange";
 import { CONFIG_FILE_NAME, EXTENSION_NAME, LABELS } from "./constants";
@@ -44,13 +44,18 @@ function getErrorMessage(error: PermissionError, gitEmail: string): string {
     switch (error.code) {
         case "GRACE_EXPIRED":
             return (
-                `This app's 5-day trial period has ended. ` +
+                `This app's trial period has ended. ` +
                 `Register it with your Ninja subscription to continue assigning object IDs.`
             );
         case "USER_NOT_AUTHORIZED":
             return (
                 `Your Git email (${gitEmail}) is not authorized to use Ninja for this app. ` +
                 `Ask your team administrator to add you as an authorized user.`
+            );
+        case "GIT_EMAIL_REQUIRED":
+            return (
+                `Ninja couldn't identify you because your Git email is not configured. ` +
+                `Please configure your Git email in VS Code or your Git settings.`
             );
         case "ORG_FLAGGED":
             return (
@@ -66,6 +71,12 @@ function getErrorMessage(error: PermissionError, gitEmail: string): string {
             return (
                 `Your organization's payment has failed. ` +
                 `Update your payment method to continue using Ninja.`
+            );
+        case "ORG_GRACE_EXPIRED":
+            return (
+                `Your 15-day grace period has expired. ` +
+                `Your administrator didn't add you to the authorized users list in time. ` +
+                `Contact your team administrator to add your Git email (${gitEmail}) to continue.`
             );
         default:
             return `Error: ${error.code}`;
@@ -108,6 +119,13 @@ export const UI = {
             window.showErrorMessage(
                 "IMPORTANT! You are using a self-hosted back end but you have not configured the polling back-end URL. Your AL Object ID Ninja may not work correctly or may not work at all.",
                 LABELS.BUTTON_LEARN_MORE
+            ),
+        showMarketplaceUpgradeAvailable: (marketplaceVersion: string) =>
+            window.showInformationMessage(
+                `AL Object ID Ninja ${marketplaceVersion} is now available with new features and improvements!`,
+                "Update Now",
+                "View Details",
+                "Dismiss"
             ),
     },
 
@@ -425,9 +443,7 @@ export const UI = {
                 .showWarningMessage(message, LABELS.BUTTON_LEARN_MORE)
                 .then(selection => {
                     if (selection === LABELS.BUTTON_LEARN_MORE) {
-                        import("vscode").then(vscode => {
-                            vscode.env.openExternal(vscode.Uri.parse(UI.permission.getHelpUrl(warning.code)));
-                        });
+                        env.openExternal(Uri.parse(UI.permission.getHelpUrl(warning.code)));
                     }
                 });
         },
@@ -445,9 +461,7 @@ export const UI = {
                 .showErrorMessage(message, LABELS.BUTTON_LEARN_MORE)
                 .then(selection => {
                     if (selection === LABELS.BUTTON_LEARN_MORE) {
-                        import("vscode").then(vscode => {
-                            vscode.env.openExternal(vscode.Uri.parse(UI.permission.getHelpUrl(error.code)));
-                        });
+                        env.openExternal(Uri.parse(UI.permission.getHelpUrl(error.code)));
                     }
                 });
         },

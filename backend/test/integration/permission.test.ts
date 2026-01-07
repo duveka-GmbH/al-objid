@@ -14,6 +14,7 @@ import { withPermissionCheck } from "../../src/permission/withPermissionCheck";
 import { CacheManager } from "../../src/permission/CacheManager";
 import { HttpRequest } from "@azure/functions";
 import { GRACE_PERIOD_MS } from "../../src/permission/types";
+import { MINIMUM_GRACE_PERIOD_END } from "../../src/permission/decisions";
 
 // Mock the CacheManager singleton
 jest.mock("../../src/permission/CacheManager", () => ({
@@ -21,6 +22,7 @@ jest.mock("../../src/permission/CacheManager", () => ({
         getAppsCache: jest.fn(),
         getOrgMembersCache: jest.fn(),
         getBlockedCache: jest.fn(),
+        getSettingsCache: jest.fn(),
         addOrphanedApp: jest.fn(),
         invalidate: jest.fn(),
         clear: jest.fn(),
@@ -32,6 +34,8 @@ const mockCacheManager = CacheManager as jest.Mocked<typeof CacheManager>;
 describe("Permission Integration Tests", () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        // Default settings cache mock (no SKIP_USER_CHECK flag for any org)
+        mockCacheManager.getSettingsCache.mockResolvedValue({ updatedAt: 0, orgs: {} });
     });
 
     /**
@@ -173,7 +177,9 @@ describe("Permission Integration Tests", () => {
             expect(response.status).toBe(200);
             expect(mockCacheManager.addOrphanedApp).toHaveBeenCalledWith(
                 "new-unknown-app",
-                expect.any(Number)
+                expect.any(Number),
+                undefined,
+                undefined
             );
             // Warning should be in response body, not header
             const body = JSON.parse(response.body as string);
@@ -182,9 +188,11 @@ describe("Permission Integration Tests", () => {
         });
 
         it("should return 403 when grace period has expired", async () => {
-            const expiredTime = Date.now() - 1000; // Expired 1 second ago
+            // Use timestamps after the floor to test expiry logic
+            const baseTime = MINIMUM_GRACE_PERIOD_END + 86400000; // 1 day after floor
+            const expiredTime = baseTime - 1000; // Expired 1 second before baseTime
             mockCacheManager.getAppsCache.mockResolvedValue({
-                updatedAt: Date.now(),
+                updatedAt: baseTime,
                 apps: {
                     "orphaned-app": { freeUntil: expiredTime },
                 },
@@ -197,14 +205,21 @@ describe("Permission Integration Tests", () => {
                 },
             });
 
-            const response = await handleRequest(handler, request);
+            // Mock Date.now to return baseTime
+            const originalNow = Date.now;
+            Date.now = () => baseTime;
+            try {
+                const response = await handleRequest(handler, request);
 
-            expect(response.status).toBe(403);
-            expect(response.body).toContain("GRACE_EXPIRED");
+                expect(response.status).toBe(403);
+                expect(response.body).toContain("GRACE_EXPIRED");
+            } finally {
+                Date.now = originalNow;
+            }
         });
 
         it("should always return warning with timeRemaining for orphaned app", async () => {
-            const freeUntil = Date.now() + GRACE_PERIOD_MS; // Full 5 days remaining
+            const freeUntil = Date.now() + GRACE_PERIOD_MS; // Full 15 days remaining
             mockCacheManager.getAppsCache.mockResolvedValue({
                 updatedAt: Date.now(),
                 apps: {

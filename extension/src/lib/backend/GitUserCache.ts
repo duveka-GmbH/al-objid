@@ -1,10 +1,19 @@
-import { workspace } from "vscode";
+import { Uri, workspace } from "vscode";
 import { ALAppManifest } from "../ALAppManifest";
 import { Git } from "../Git";
+import { Telemetry, TelemetryEventType } from "../Telemetry";
+import * as crypto from "crypto";
+import { Config } from "../Config";
 
 interface GitUserInfo {
     name: string;
     email: string;
+}
+
+function getSha1(input: string): string {
+    const sha1 = crypto.createHash("sha1");
+    sha1.update(input);
+    return sha1.digest("base64");
 }
 
 /**
@@ -23,6 +32,8 @@ export class GitUserCache {
     //#endregion
 
     private readonly _cache: Map<string, GitUserInfo> = new Map();
+    private readonly _inFlightPromises: Map<string, Promise<GitUserInfo>> = new Map();
+    private readonly _seenEmailsThisSession: Set<string> = new Set();
     private static readonly WORKSPACE_ROOT_KEY = "__workspace_root__";
 
     /**
@@ -42,6 +53,12 @@ export class GitUserCache {
             return cached;
         }
 
+        // Check for in-flight promise
+        const inFlight = this._inFlightPromises.get(cacheKey);
+        if (inFlight) {
+            return inFlight;
+        }
+
         // If no URI available, return empty and cache it
         if (!uri) {
             const empty: GitUserInfo = { name: "", email: "" };
@@ -49,6 +66,26 @@ export class GitUserCache {
             return empty;
         }
 
+        // Create new promise
+        const promise = this._fetchAndCacheUserInfo(uri, cacheKey);
+        this._inFlightPromises.set(cacheKey, promise);
+
+        // Clean up on completion (success or failure)
+        promise.finally(() => {
+            this._inFlightPromises.delete(cacheKey);
+        });
+
+        return promise;
+    }
+
+    /**
+     * Fetches git user info and caches the result.
+     * 
+     * @param uri The URI to fetch git info from
+     * @param cacheKey The cache key to store the result under
+     * @returns Promise resolving to git user info
+     */
+    private async _fetchAndCacheUserInfo(uri: Uri, cacheKey: string): Promise<GitUserInfo> {
         try {
             const gitInfo = await Git.instance.getUserInfo(uri);
             const result: GitUserInfo = {
@@ -56,6 +93,11 @@ export class GitUserCache {
                 email: gitInfo.email?.trim().toLowerCase() || "",
             };
             this._cache.set(cacheKey, result);
+            if (result.email && !this._seenEmailsThisSession.has(result.email)) {
+                this._seenEmailsThisSession.add(result.email);
+                const uid = getSha1(`email:${result.email}`);
+                Telemetry.instance.log(TelemetryEventType.UniqueUser, undefined, { uid: uid, ownEndpoints: !Config.instance.isDefaultBackEndConfiguration });
+            }
             return result;
         } catch {
             // Git command failed, cache and return empty

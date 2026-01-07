@@ -27,12 +27,7 @@ import {
     isOrgBlocked,
     mapBlockReason,
 } from "./decisions";
-import {
-    PermissionResult,
-    AppsCacheEntry,
-    OrgMembersCache,
-    GRACE_PERIOD_MS,
-} from "./types";
+import { PermissionResult, AppsCacheEntry, OrgMembersCache, SettingsFlags, GRACE_PERIOD_MS } from "./types";
 
 /**
  * Permission checker - determines if request should proceed.
@@ -46,15 +41,22 @@ export const PermissionChecker = {
      *
      * @param appId - The app GUID from Ninja-App-Id header
      * @param gitEmail - The user's git email (may be undefined)
+     * @param publisher - The app publisher (may be undefined)
+     * @param appName - The app name (may be undefined)
      * @returns Permission result (allow, warn, or block)
      */
-    async checkPermission(appId: string, gitEmail: string | undefined): Promise<PermissionResult> {
+    async checkPermission(
+        appId: string,
+        gitEmail: string | undefined,
+        publisher: string | undefined = undefined,
+        appName: string | undefined = undefined
+    ): Promise<PermissionResult> {
         // 1. Load apps cache (smart refresh if appId missing)
         const appsCache = await CacheManager.getAppsCache([appId]);
 
         // Guard 1: Unknown app - create orphaned entry
         if (!isAppKnown(appsCache, appId)) {
-            return PermissionChecker._handleUnknownApp(appId);
+            return PermissionChecker._handleUnknownApp(appId, gitEmail, publisher, appName);
         }
 
         const app = appsCache.apps[appId];
@@ -66,7 +68,7 @@ export const PermissionChecker = {
 
         // Guard 3: Orphaned app - check grace period
         if (isAppOrphaned(app)) {
-            return PermissionChecker._handleOrphanedApp(app);
+            return PermissionChecker._handleOrphanedApp(appId, app, gitEmail, publisher, appName);
         }
 
         // Guard 4: Personal app - check email match
@@ -82,11 +84,58 @@ export const PermissionChecker = {
     /**
      * Handle unknown app - create orphaned entry with grace period.
      */
-    async _handleUnknownApp(appId: string): Promise<PermissionResult> {
+
+    /**
+     * Try to claim an app by matching its publisher against organization-approved publishers.
+     *
+     * @returns PermissionResult if publisher matched (app claimed, handled as org app), undefined if no match
+     */
+    async _tryClaimAppByPublisher(
+        appId: string,
+        freeUntil: number,
+        gitEmail: string | undefined,
+        publisher: string | undefined,
+        appName: string | undefined
+    ): Promise<PermissionResult | undefined> {
+        if (!publisher) {
+            return undefined;
+        }
+
+        const settings = await CacheManager.getSettingsCache();
+        const publisherKey = publisher.trim().toLowerCase();
+
+        for (const orgId of Object.keys(settings.orgs || {})) {
+            const entry = settings.orgs[orgId];
+            const publishers = entry.publishers || [];
+            for (const orgPublisher of publishers) {
+                if (orgPublisher.trim().toLowerCase() === publisherKey) {
+                    await CacheManager.addOrganizationApp(appId, orgId, freeUntil, publisher, appName);
+
+                    const claimedApp: AppsCacheEntry = { ownerId: orgId, freeUntil, publisher };
+                    return PermissionChecker._handleOrganizationApp(appId, claimedApp, gitEmail);
+                }
+            }
+        }
+
+        return undefined;
+    },
+
+    async _handleUnknownApp(
+        appId: string,
+        gitEmail: string | undefined,
+        publisher: string | undefined,
+        appName: string | undefined
+    ): Promise<PermissionResult> {
         const freeUntil = Date.now() + GRACE_PERIOD_MS;
 
-        // Create orphaned entry in cache and master
-        await CacheManager.addOrphanedApp(appId, freeUntil);
+        // Try to claim by publisher match
+        const claimResult = await PermissionChecker._tryClaimAppByPublisher(appId, freeUntil, gitEmail, publisher, appName);
+        if (claimResult) {
+            return claimResult;
+        }
+
+        // No publisher match - create orphaned entry
+        await CacheManager.addOrphanedApp(appId, freeUntil, publisher, appName);
 
         return {
             allowed: true,
@@ -103,10 +152,22 @@ export const PermissionChecker = {
      * Per specification: if not expired, ALWAYS return warning with timeRemaining.
      * The only decision point is: expired vs not expired.
      */
-    _handleOrphanedApp(app: AppsCacheEntry): PermissionResult {
+    async _handleOrphanedApp(
+        appId: string,
+        app: AppsCacheEntry,
+        gitEmail: string | undefined,
+        publisher: string | undefined,
+        appName: string | undefined
+    ): Promise<PermissionResult> {
         const freeUntil = app.freeUntil!;
 
-        // Grace period expired - block
+        // Try to claim by publisher match
+        const claimResult = await PermissionChecker._tryClaimAppByPublisher(appId, freeUntil, gitEmail, publisher, appName);
+        if (claimResult) {
+            return claimResult;
+        }
+
+        // No publisher match - check grace period
         if (isGracePeriodExpired(freeUntil)) {
             return {
                 allowed: false,
@@ -132,7 +193,7 @@ export const PermissionChecker = {
         if (!gitEmail) {
             return {
                 allowed: false,
-                error: { code: "USER_NOT_AUTHORIZED" },
+                error: { code: "GIT_EMAIL_REQUIRED" },
             };
         }
 
@@ -153,17 +214,14 @@ export const PermissionChecker = {
     /**
      * Handle organization app - check membership + blocked status.
      */
-    async _handleOrganizationApp(
-        appId: string,
-        app: AppsCacheEntry,
-        gitEmail: string | undefined
-    ): Promise<PermissionResult> {
+    async _handleOrganizationApp(appId: string, app: AppsCacheEntry, gitEmail: string | undefined): Promise<PermissionResult> {
         const orgId = app.ownerId!;
 
         // Load caches in parallel
-        const [orgMembersCache, blockedCache] = await Promise.all([
+        const [orgMembersCache, blockedCache, settingsCache] = await Promise.all([
             gitEmail ? CacheManager.getOrgMembersCache(orgId, gitEmail) : Promise.resolve({ updatedAt: 0, orgs: {} } as OrgMembersCache),
             CacheManager.getBlockedCache(),
+            CacheManager.getSettingsCache(orgId),
         ]);
 
         // Check if organization is blocked (first for security)
@@ -175,11 +233,17 @@ export const PermissionChecker = {
             };
         }
 
+        // Check if user check should be skipped (e.g., unlimited plan)
+        const settings = settingsCache.orgs[orgId];
+        if (settings && settings.flags & SettingsFlags.SKIP_USER_CHECK) {
+            return { allowed: true };
+        }
+
         // No email provided
         if (!gitEmail) {
             return {
                 allowed: false,
-                error: { code: "USER_NOT_AUTHORIZED" },
+                error: { code: "GIT_EMAIL_REQUIRED" },
             };
         }
 
@@ -207,6 +271,39 @@ export const PermissionChecker = {
         // Check if user is in allow list
         // If org has config but user not in allow list, check user-based grace period
         if (org && !isEmailInAllowList(org, gitEmail)) {
+            // Domain-based auto-claim: if email domain matches an approved domain, add user to allow list
+            const domains = settings?.domains || [];
+            if (domains.length > 0) {
+                const emailLower = gitEmail.toLowerCase();
+                const at = emailLower.lastIndexOf("@");
+                const emailDomain = at >= 0 ? emailLower.substring(at + 1).trim() : "";
+
+                if (emailDomain) {
+                    for (const approvedDomain of domains) {
+                        const approvedKey = (approvedDomain || "").trim().toLowerCase().replace(/^@+/, "").replace(/\s+/g, "");
+
+                        if (approvedKey && approvedKey === emailDomain) {
+                            const addResult = await CacheManager.addUserToOrganizationAllowList(orgId, gitEmail);
+                            if (addResult.added || addResult.alreadyPresent) {
+                                return { allowed: true };
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If domain didn't match AND auto-deny is enabled, add to deny list and block
+            if (settings && settings.flags & SettingsFlags.DENY_UNKNOWN_DOMAINS) {
+                await CacheManager.addUserToOrganizationDenyList(orgId, gitEmail);
+                return {
+                    allowed: false,
+                    error: {
+                        code: "USER_NOT_AUTHORIZED",
+                        gitEmail,
+                    },
+                };
+            }
+
             // Log unknown user attempt and get when user was first seen
             // User is NOT in allow list AND NOT in deny list (checked earlier)
             let firstSeenTimestamp: number;
@@ -224,13 +321,13 @@ export const PermissionChecker = {
                 };
             }
 
-            // Calculate grace period (7 days from first seen)
-            const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+            // Calculate grace period (15 days from first seen)
+            const GRACE_PERIOD_MS = 15 * 24 * 60 * 60 * 1000; // 15 days
             const now = Date.now();
             const gracePeriodRemaining = GRACE_PERIOD_MS - (now - firstSeenTimestamp);
 
             if (gracePeriodRemaining > 0) {
-                // User within 7-day grace period - allow with warning
+                // User within 15-day grace period - allow with warning
                 return {
                     allowed: true,
                     warning: {
@@ -245,7 +342,7 @@ export const PermissionChecker = {
             return {
                 allowed: false,
                 error: {
-                    code: "USER_NOT_AUTHORIZED",
+                    code: "ORG_GRACE_EXPIRED",
                     gitEmail,
                 },
             };

@@ -80,17 +80,25 @@ export async function handleRequest<TRequest = any, TResponse = any, TParams = a
 
         // If markAsChanged was called, augment response with _appInfo (v2 behavior)
         let finalResponse: any = responseRaw;
-        if (changedApp && typeof responseRaw === "object" && responseRaw !== null) {
+        if (changedApp) {
             // Strip _authorization and _ranges from app info (v2 behavior)
             const { _authorization, _ranges, ...appInfo } = changedApp;
-            finalResponse = { ...responseRaw, _appInfo: appInfo };
+            if (responseRaw === undefined) {
+                finalResponse = { _appInfo: appInfo };
+            } else if (typeof responseRaw === "object" && responseRaw !== null) {
+                finalResponse = { ...responseRaw, _appInfo: appInfo };
+            }
         }
 
         // Add permission warning to response body if present (skip in private backend mode)
         if (!isPrivateBackend()) {
             const warning = getPermissionWarning(azureRequest);
-            if (warning && typeof finalResponse === "object" && finalResponse !== null) {
-                finalResponse = { ...finalResponse, warning };
+            if (warning) {
+                if (finalResponse === undefined) {
+                    finalResponse = { warning };
+                } else if (typeof finalResponse === "object" && finalResponse !== null) {
+                    finalResponse = { ...finalResponse, warning };
+                }
             }
         }
 

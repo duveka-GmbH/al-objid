@@ -22,7 +22,7 @@ export class LostObjectTypeNode extends AppAwareDescendantNode {
         super(parent);
         this._label = objectType;
         this._uriPathPart = objectType;
-        this._objects = objects;
+        this._objects = objects.filter(obj => typeof obj.id === "number");
         this._tooltip = new MarkdownString(`**${objects.length}** unused ${objectType} object ID(s)`);
     }
 

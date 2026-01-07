@@ -32,6 +32,8 @@ let getNextConfig: any;
 let syncIdsConfig: any;
 let authorizeAppConfig: any;
 let touchConfig: any;
+let storeAssignmentConfig: any;
+let storeAssignmentDeleteConfig: any;
 
 mockCreateEndpoint.mockImplementation((config: any) => {
     if (config.moniker === "v3-getNext") {
@@ -46,6 +48,12 @@ mockCreateEndpoint.mockImplementation((config: any) => {
     if (config.moniker === "v3-touch") {
         touchConfig = config;
     }
+    if (config.moniker === "v3-storeAssignment") {
+        storeAssignmentConfig = config;
+    }
+    if (config.moniker === "v3-storeAssignment-delete") {
+        storeAssignmentDeleteConfig = config;
+    }
     return {} as any;
 });
 
@@ -54,6 +62,7 @@ import "../../src/functions/v3/getNext";
 import "../../src/functions/v3/syncIds";
 import "../../src/functions/v3/authorizeApp";
 import "../../src/functions/v3/touch";
+import "../../src/functions/v3/storeAssignment";
 
 describe("Activity Logging Integration Tests", () => {
     // Track all blob instances and their writes
@@ -543,6 +552,131 @@ describe("Activity Logging Integration Tests", () => {
 
             // No logs should be written
             expect(blobWrites.size).toBe(0);
+        });
+    });
+
+    // =========================================================================
+    // storeAssignment Endpoint Tests
+    // =========================================================================
+    describe("storeAssignment endpoint", () => {
+        const createStoreAssignmentRequest = (appId: string, type: string, id: string, email: string = "user@example.com") => ({
+            params: { appId, type, id },
+            headers: { get: jest.fn().mockImplementation((name: string) => name === "Ninja-App-Id" ? appId : null) },
+            body: {},
+            appId,
+            app: {},
+            appBlob: mockBlobInstance,
+            user: { email, name: "Test User" },
+            markAsChanged: jest.fn(),
+        });
+
+        beforeEach(() => {
+            mockBlobInstance = {
+                read: jest.fn().mockResolvedValue({}),
+                optimisticUpdate: jest.fn().mockImplementation((fn: Function) => fn(null)),
+            };
+        });
+
+        it("should log activity for organization app on POST (addAssignment)", async () => {
+            const orgCache: AppsCache = {
+                updatedAt: Date.now(),
+                apps: {
+                    "org-app-1": { ownerId: "org-abc" },
+                },
+            };
+            MockCacheManager.getAppsCache.mockResolvedValue(orgCache);
+
+            await storeAssignmentConfig.POST(createStoreAssignmentRequest("org-app-1", "codeunit", "50000"));
+
+            const orgLogPath = "logs://org-abc_featureLog.json";
+            expect(blobWrites.has(orgLogPath)).toBe(true);
+
+            const log = blobWrites.get(orgLogPath)!;
+            expect(log).toHaveLength(1);
+            expect(log[0]).toMatchObject({
+                appId: "org-app-1",
+                feature: "addAssignment",
+            });
+        });
+
+        it("should log activity for organization app on POST /delete (removeAssignment)", async () => {
+            const orgCache: AppsCache = {
+                updatedAt: Date.now(),
+                apps: {
+                    "org-app-2": { ownerId: "org-xyz" },
+                },
+            };
+            MockCacheManager.getAppsCache.mockResolvedValue(orgCache);
+
+            mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn({ codeunit: [50000] }));
+
+            await storeAssignmentDeleteConfig.POST(createStoreAssignmentRequest("org-app-2", "codeunit", "50000"));
+
+            const orgLogPath = "logs://org-xyz_featureLog.json";
+            expect(blobWrites.has(orgLogPath)).toBe(true);
+
+            const log = blobWrites.get(orgLogPath)!;
+            expect(log[0]).toMatchObject({
+                appId: "org-app-2",
+                feature: "removeAssignment",
+            });
+        });
+
+        it("should NOT log activity for sponsored app", async () => {
+            const sponsoredCache: AppsCache = {
+                updatedAt: Date.now(),
+                apps: {
+                    "sponsored-app": { sponsored: true },
+                },
+            };
+            MockCacheManager.getAppsCache.mockResolvedValue(sponsoredCache);
+
+            await storeAssignmentConfig.POST(createStoreAssignmentRequest("sponsored-app", "codeunit", "50000"));
+
+            expect(blobWrites.size).toBe(0);
+        });
+
+        it("should NOT log activity for personal app", async () => {
+            const personalCache: AppsCache = {
+                updatedAt: Date.now(),
+                apps: {
+                    "personal-app": { emails: ["user@example.com"] },
+                },
+            };
+            MockCacheManager.getAppsCache.mockResolvedValue(personalCache);
+
+            await storeAssignmentConfig.POST(createStoreAssignmentRequest("personal-app", "codeunit", "50000"));
+
+            expect(blobWrites.size).toBe(0);
+        });
+
+        it("should NOT log activity for orphaned app", async () => {
+            const orphanedCache: AppsCache = {
+                updatedAt: Date.now(),
+                apps: {
+                    "orphaned-app": { freeUntil: Date.now() + 10000 },
+                },
+            };
+            MockCacheManager.getAppsCache.mockResolvedValue(orphanedCache);
+
+            await storeAssignmentConfig.POST(createStoreAssignmentRequest("orphaned-app", "codeunit", "50000"));
+
+            expect(blobWrites.size).toBe(0);
+        });
+
+        it("should normalize email to lowercase", async () => {
+            const orgCache: AppsCache = {
+                updatedAt: Date.now(),
+                apps: {
+                    "org-app": { ownerId: "org-test" },
+                },
+            };
+            MockCacheManager.getAppsCache.mockResolvedValue(orgCache);
+
+            await storeAssignmentConfig.POST(createStoreAssignmentRequest("org-app", "codeunit", "50000", "User@EXAMPLE.COM"));
+
+            const log = blobWrites.get("logs://org-test_featureLog.json")!;
+            expect(log[0].email).toBe("user@example.com");
         });
     });
 

@@ -1,14 +1,22 @@
-POST http://localhost:7071/api/v3/getNext/13fa81fd716a0d68cd6feb06e1e9a50ad2dba990ff7343cfbd6ec9f027e87970
+POST http://localhost:7072/api/v3/getNext/13fa81fd716a0d68cd6feb06e1e9a50ad2dba990ff7343cfbd6ec9f027e87970
+Ninja-App-Id: 13fa81fd716a0d68cd6feb06e1e9a50ad2dba990ff7343cfbd6ec9f027e87970
 Content-Type: application/json
 
 {
-  "type": "codeunit",
+  "appId": "13fa81fd716a0d68cd6feb06e1e9a50ad2dba990ff7343cfbd6ec9f027e87970",
+  "type": "table",
   "ranges": [
-    {
-      "from": 50100,
-      "to": 50209
-    }
-  ],
-  "commit": false,
+      {
+        "from": 50100,
+        "to": 50139,
+        "description": "Normal - to include in license"
+      },
+      {
+        "from": 50200,
+        "to": 50299,
+        "description": "Temporary - not licensed"
+      }
+    ],
+  "commit": true,
   "perRange": true
 }

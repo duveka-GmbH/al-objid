@@ -10,7 +10,7 @@ import { ConsumptionInfo } from "../types/ConsumptionInfo";
 import { NextObjectIdInfo } from "../types/NextObjectIdInfo";
 import { Config } from "../Config";
 import { API_RESULT, EXTENSION_VERSION } from "../constants";
-import { Telemetry, TelemetryEventType } from "../Telemetry";
+import { TelemetryEventType } from "../Telemetry";
 import { getRangeForId } from "../functions/getRangeForId";
 import { BackEndAppInfo } from "./BackEndAppInfo";
 import { NinjaALRange } from "../types/NinjaALRange";
@@ -25,7 +25,7 @@ import { PropertyBag } from "../types/PropertyBag";
 export class Backend {
     private static readonly _knownManagedAppsPromises: PropertyBag<Promise<boolean> | undefined> = {};
     private static readonly _knownManagedApps: PropertyBag<boolean | undefined> = {};
-    private static readonly _touchedAppsThisSession: Set<string> = new Set();
+    private static readonly _touchedAppFeaturesThisSession: Set<string> = new Set();
 
     /**
      * Checks if an app is a known managed app. A managed app is an app that Ninja's back end is aware of and Ninja
@@ -115,6 +115,7 @@ export class Backend {
             `/api/v3/getNext/${appId}`,
             "POST",
             {
+                appId,
                 type,
                 ranges,
                 commit,
@@ -125,8 +126,7 @@ export class Backend {
             app.config.authKey,
             app.manifest
         );
-        if (response.status === API_RESULT.SUCCESS)
-            output.log(`Received next ${type} ID response: ${JSON.stringify(response.value)}`);
+        if (response.status === API_RESULT.SUCCESS) output.log(`Received next ${type} ID response: ${JSON.stringify(response.value)}`);
         return response.value;
     }
 
@@ -138,7 +138,9 @@ export class Backend {
         const response = await sendRequest<{ updated: boolean }>(
             `/api/v3/storeAssignment/${appId}/${type}/${id}`,
             "POST",
-            {},
+            {
+                appId,
+            },
             undefined,
             HttpEndpoints.default,
             app.config.authKey,
@@ -155,7 +157,9 @@ export class Backend {
         const response = await sendRequest<{ updated: boolean }>(
             `/api/v3/storeAssignment/${appId}/${type}/${id}/delete`,
             "POST",
-            {},
+            {
+                appId,
+            },
             undefined,
             HttpEndpoints.default,
             app.config.authKey,
@@ -172,7 +176,7 @@ export class Backend {
         const response = await sendRequest<ConsumptionInfo>(
             `/api/v3/syncIds/${appId}`,
             patch ? "PATCH" : "POST",
-            { ids },
+            { ids, appId },
             undefined,
             HttpEndpoints.default,
             app.authKey,
@@ -192,7 +196,7 @@ export class Backend {
         const response = await sendRequest<ConsumptionInfo>(
             "/api/v3/autoSyncIds",
             patch ? "PATCH" : "POST",
-            consumptions,  // Send array directly, not wrapped in appFolders
+            consumptions, // Send array directly, not wrapped in appFolders
             undefined,
             HttpEndpoints.default,
             undefined,
@@ -245,10 +249,7 @@ export class Backend {
         return result;
     }
 
-    public static async deauthorizeApp(
-        app: BackEndAppInfo,
-        errorHandler: HttpErrorHandler<AuthorizationDeletedInfo>
-    ): Promise<boolean> {
+    public static async deauthorizeApp(app: BackEndAppInfo, errorHandler: HttpErrorHandler<AuthorizationDeletedInfo>): Promise<boolean> {
         const appId = WorkspaceManager.instance.getPoolIdFromAppIdIfAvailable(app.hash);
         const response = await sendRequest<AuthorizationDeletedInfo>(
             `/api/v3/authorizeApp/${appId}`,
@@ -313,7 +314,7 @@ export class Backend {
             {},
             undefined,
             HttpEndpoints.default,
-            undefined,
+            app.authKey,
             WorkspaceManager.instance.getALAppFromHash(app.hash)?.manifest
         );
         return response.value;
@@ -360,24 +361,28 @@ export class Backend {
 
     /**
      * Send touch request for the given apps.
-     * Only sends for apps not yet touched in this VS Code session.
+     * Only sends for apps not yet touched for this specific feature in this VS Code session.
      * Fire-and-forget pattern - doesn't block UI.
      */
     public static async touch(apps: ALApp[], feature: string): Promise<void> {
+        if (!Config.instance.isDefaultBackEndConfiguration) {
+            return;
+        }
+
         if (apps.length === 0) {
             return;
         }
 
-        // Filter out already-touched apps
-        const untouchedApps = apps.filter(app => !this._touchedAppsThisSession.has(app.hash));
+        // Filter out apps already touched for this specific feature
+        const untouchedApps = apps.filter(app => !this._touchedAppFeaturesThisSession.has(`${app.hash}|${feature}`));
 
         if (untouchedApps.length === 0) {
-            return; // All apps already touched this session
+            return; // All apps already touched for this feature this session
         }
 
-        // Mark as touched BEFORE sending request (optimistic)
+        // Mark as touched for this feature BEFORE sending request (optimistic)
         for (const app of untouchedApps) {
-            this._touchedAppsThisSession.add(app.hash);
+            this._touchedAppFeaturesThisSession.add(`${app.hash}|${feature}`);
         }
 
         // Extract app IDs (real GUIDs, not hashes)
@@ -389,10 +394,10 @@ export class Backend {
                 "/api/v3/touch",
                 "POST",
                 { apps: appIds, feature },
-                async () => true,  // Silent error handler
+                async () => true, // Silent error handler
                 HttpEndpoints.default,
-                undefined,  // No auth key needed
-                untouchedApps[0]?.manifest  // Use first app's manifest for git headers
+                undefined, // No auth key needed
+                untouchedApps[0]?.manifest // Use first app's manifest for git headers
             );
         } catch (err) {
             // Silently handle errors - logging failures shouldn't impact UX

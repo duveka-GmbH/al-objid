@@ -19,9 +19,11 @@ export type PermissionWarningCode = "APP_GRACE_PERIOD" | "ORG_GRACE_PERIOD";
 export type PermissionErrorCode =
     | "GRACE_EXPIRED"
     | "USER_NOT_AUTHORIZED"
+    | "GIT_EMAIL_REQUIRED"
     | "ORG_FLAGGED"
     | "SUBSCRIPTION_CANCELLED"
-    | "PAYMENT_FAILED";
+    | "PAYMENT_FAILED"
+    | "ORG_GRACE_EXPIRED";
 
 /**
  * Permission warning structure from response body.
@@ -121,6 +123,7 @@ export function parseErrorBody(body: any): PermissionError | undefined {
                 "ORG_FLAGGED",
                 "SUBSCRIPTION_CANCELLED",
                 "PAYMENT_FAILED",
+                "ORG_GRACE_EXPIRED",
             ];
 
             for (const code of knownCodes) {

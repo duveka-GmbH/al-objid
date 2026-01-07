@@ -230,6 +230,52 @@ describe("getNext updateCallbacks", () => {
             });
         });
 
+        describe("when context.id is undefined", () => {
+            it("should not modify app when context.id is undefined", () => {
+                const context = createContext({ id: undefined as any });
+                const callback = createGetNextUpdateCallback({ ...defaultParams, context });
+                const app = { codeunit: [50000, 50001] } as AppInfo;
+
+                const result = callback(app, 0);
+
+                expect(result).toBe(app);
+                expect(result!.codeunit).toEqual([50000, 50001]);
+                expect(result!.codeunit).not.toContain(undefined);
+                expect(result!.codeunit).not.toContain(null);
+            });
+
+            it("should set context.updated to false when context.id is undefined", () => {
+                const context = createContext({ id: undefined as any });
+                const callback = createGetNextUpdateCallback({ ...defaultParams, context });
+                const app = { codeunit: [50000, 50001] } as AppInfo;
+
+                callback(app, 0);
+
+                expect(context.updated).toBe(false);
+            });
+
+            it("should not modify empty app when context.id is undefined", () => {
+                const context = createContext({ id: undefined as any });
+                const callback = createGetNextUpdateCallback({ ...defaultParams, context });
+                const app = {} as AppInfo;
+
+                const result = callback(app, 0);
+
+                expect(result!.codeunit).toBeUndefined();
+                expect(context.updated).toBe(false);
+            });
+
+            it("should not create consumption array when context.id is undefined and app is null", () => {
+                const context = createContext({ id: undefined as any });
+                const callback = createGetNextUpdateCallback({ ...defaultParams, context });
+
+                const result = callback(null, 0);
+
+                expect(result!.codeunit).toBeUndefined();
+                expect(context.updated).toBe(false);
+            });
+        });
+
         describe("extended type handling", () => {
             it("should handle extended type format", () => {
                 const context = createContext({ id: 5 });

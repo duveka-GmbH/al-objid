@@ -23,7 +23,7 @@ async function updateConsumptions(blob: Blob<AppInfo>, objectIds: ObjectConsumpt
 // POST - Sync IDs (full replacement)
 // appId moved from body to route parameter
 // Authorization is handled centrally during app binding
-const handler: SingleAppHttpHandler<SyncIdsRequest, ObjectConsumptions> = async (req) => {
+const handler: SingleAppHttpHandler<SyncIdsRequest, void> = async (req) => {
     const patch = req.method?.toLowerCase() === "patch";
     const { ids } = req.body;
 
@@ -50,8 +50,6 @@ const handler: SingleAppHttpHandler<SyncIdsRequest, ObjectConsumptions> = async 
 
     // Mark as changed to include _appInfo in response (v2 behavior)
     req.markAsChanged(result);
-
-    return consumptions;
 };
 
 validate(handler, {
