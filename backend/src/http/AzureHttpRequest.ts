@@ -2,6 +2,7 @@ import { Headers } from "undici";
 import { HttpStatusCode } from "./HttpStatusCode";
 import { Blob } from "@vjeko.com/azure-blob";
 import { AppInfo } from "../types";
+import { BillingInfo } from "../billing/types";
 
 /**
  * Duck-typed interface for headers that supports the get() method.
@@ -34,6 +35,12 @@ export interface AzureHttpRequest<TBody = any, TParams = any> {
     body: TBody;
     query: URLSearchParams;
     user?: UserInfo;
+
+    /**
+     * Billing information bound during preprocessing.
+     * Contains app, user, organization, and permission data.
+     */
+    billing?: BillingInfo;
 
     setHeader(name: string, value: string): void;
     setStatus(statusCode: HttpStatusCode): void;

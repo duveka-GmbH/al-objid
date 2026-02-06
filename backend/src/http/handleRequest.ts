@@ -8,10 +8,12 @@ import { ValidatorSymbol } from "./validationTypes";
 import { performValidation } from "./validate";
 import { bindSingleApp, bindMultiApp, bindSingleAppOptional, bindMultiAppOptional } from "./bindApp";
 import { bindUser } from "./bindUser";
+import { parseNinjaHeaders, ParsedNinjaHeaders } from "./parseNinjaHeaders";
+import { checkVersion } from "./checkVersion";
 import { AppInfo } from "../types";
-import { PermissionCheckSymbol } from "../permission/withPermissionCheck";
-import { bindPermission, enforcePermission, getPermissionWarning } from "../permission/bindPermission";
-import { isPrivateBackend } from "../utils/privateBackend";
+import { preprocessBilling, postprocessBillingSuccess, performWritebacks } from "../billing";
+
+export const WritebackPromiseSymbol = Symbol("writebackPromise");
 
 export async function handleRequest<TRequest = any, TResponse = any, TParams = any>(
     handler: AzureHttpHandler<TRequest, TResponse>,
@@ -41,20 +43,26 @@ export async function handleRequest<TRequest = any, TResponse = any, TParams = a
         },
     };
 
+    // Parse headers once for use throughout
+    let parsedHeaders: ParsedNinjaHeaders | undefined;
+
     try {
         const validators = handler[ValidatorSymbol];
         if (validators) {
             performValidation(azureRequest, ...validators);
         }
 
-        // Bind user info from headers (automatic for all requests)
-        bindUser(azureRequest);
+        // Parse Ninja headers once (handles payload vs individual headers fallback)
+        parsedHeaders = parseNinjaHeaders(request.headers);
 
-        // Permission check if handler requires it (skip in private backend mode)
-        if (handler[PermissionCheckSymbol] && !isPrivateBackend()) {
-            await bindPermission(azureRequest);
-            enforcePermission(azureRequest);
-        }
+        // Version check (early guard, before expensive permission operations)
+        checkVersion(parsedHeaders);
+
+        // Bind user info from parsed headers (automatic for all requests)
+        bindUser(azureRequest, parsedHeaders);
+
+        // Billing preprocessing (handles binding, claiming, blocking, dunning, permission)
+        await preprocessBilling(azureRequest, parsedHeaders, handler);
 
         // Bind app data if handler requires it (mandatory binding)
         if (handler[SingleAppHttpRequestSymbol]) {
@@ -90,17 +98,8 @@ export async function handleRequest<TRequest = any, TResponse = any, TParams = a
             }
         }
 
-        // Add permission warning to response body if present (skip in private backend mode)
-        if (!isPrivateBackend()) {
-            const warning = getPermissionWarning(azureRequest);
-            if (warning) {
-                if (finalResponse === undefined) {
-                    finalResponse = { warning };
-                } else if (typeof finalResponse === "object" && finalResponse !== null) {
-                    finalResponse = { ...finalResponse, warning };
-                }
-            }
-        }
+        // Billing success post-processing (adds permission warning, claim issue header)
+        finalResponse = postprocessBillingSuccess(azureRequest, finalResponse);
 
         let body: string | undefined = undefined;
         switch (typeof finalResponse) {
@@ -122,6 +121,19 @@ export async function handleRequest<TRequest = any, TResponse = any, TParams = a
                 status: error.statusCode,
                 body: error.message,
             };
+        }
+        // Catch all other errors and return 500
+        console.error("Unexpected error in handleRequest:", error);
+        return {
+            status: HttpStatusCode.ServerError_500_InternalServerError,
+            body: error instanceof Error ? error.message : "Internal server error",
+        };
+    } finally {
+        // Fire-and-forget writebacks (don't slow down response)
+        const writebackPromise = performWritebacks(azureRequest, parsedHeaders, handler).catch(() => {});
+        // Only assign if tests explicitly opted-in by setting Symbol to true
+        if ((request as any)[WritebackPromiseSymbol] === true) {
+            (request as any)[WritebackPromiseSymbol] = writebackPromise;
         }
     }
 }

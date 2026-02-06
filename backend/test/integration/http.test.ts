@@ -21,7 +21,8 @@ import { ErrorResponse } from "../../src/http/ErrorResponse";
 
 describe("HTTP Integration Tests", () => {
     /**
-     * Creates a mock HttpRequest that simulates Azure Functions HTTP request
+     * Creates a mock HttpRequest that simulates Azure Functions HTTP request.
+     * Includes a default Ninja-Version header to pass version checks.
      */
     const createHttpRequest = (options: {
         method?: string;
@@ -43,6 +44,10 @@ describe("HTTP Integration Tests", () => {
         const headersMap = new Map<string, string>();
         if (contentType) {
             headersMap.set("content-type", contentType);
+        }
+        // Default Ninja-Version header to pass version checks (unless explicitly overridden)
+        if (!headers["Ninja-Version"] && !headers["ninja-version"]) {
+            headersMap.set("ninja-version", "99.0.0");
         }
         Object.entries(headers).forEach(([key, value]) => {
             headersMap.set(key.toLowerCase(), value);
@@ -981,7 +986,7 @@ describe("HTTP Integration Tests", () => {
             expect(response.body).toBe("Internal server error");
         });
 
-        it("should return undefined for non-ErrorResponse exceptions", async () => {
+        it("should return 500 with error message for non-ErrorResponse exceptions", async () => {
             const handler: AzureHttpHandler = async (req: AzureHttpRequest) => {
                 throw new Error("Unexpected error");
             };
@@ -991,7 +996,8 @@ describe("HTTP Integration Tests", () => {
 
             const response = await handleRequest(handler, request);
 
-            expect(response).toBeUndefined();
+            expect(response.status).toBe(HttpStatusCode.ServerError_500_InternalServerError);
+            expect(response.body).toBe("Unexpected error");
         });
 
         it("should handle validation errors before handler is called", async () => {

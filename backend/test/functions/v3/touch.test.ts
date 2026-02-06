@@ -1,19 +1,23 @@
 import { createEndpoint } from "../../../src/http/createEndpoint";
-import { ActivityLogger } from "../../../src/activity/ActivityLogger";
 import { HttpStatusCode } from "../../../src/http/HttpStatusCode";
+import { CacheManager, evaluateClaimCandidates } from "../../../src/billing";
 
 jest.mock("../../../src/http/createEndpoint");
-jest.mock("../../../src/activity/ActivityLogger");
+jest.mock("../../../src/billing");
+
+const mockCacheManager = CacheManager as jest.Mocked<typeof CacheManager>;
+const mockEvaluateClaimCandidates = evaluateClaimCandidates as jest.MockedFunction<typeof evaluateClaimCandidates>;
 
 const mockCreateEndpoint = createEndpoint as jest.MockedFunction<typeof createEndpoint>;
-const mockActivityLogger = ActivityLogger as jest.Mocked<typeof ActivityLogger>;
 
 let endpointConfig: any;
 mockCreateEndpoint.mockImplementation((config: any) => {
     endpointConfig = config;
 });
 
-import "../../../src/functions/v3/touch";
+// Require after mocking to capture the config
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+require("../../../src/functions/v3/touch");
 
 describe("touch", () => {
     const createMockRequest = (body: any, user: any = { email: "user@example.com" }) => ({
@@ -31,7 +35,6 @@ describe("touch", () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        mockActivityLogger.logTouchActivity.mockResolvedValue(undefined);
     });
 
     describe("endpoint configuration", () => {
@@ -59,27 +62,17 @@ describe("touch", () => {
         });
     });
 
-    describe("POST handler - valid requests", () => {
-        it("should call logTouchActivity with valid request", async () => {
-            const request = createMockRequest({
-                apps: ["app-1", "app-2", "app-3"],
-                feature: "explorer",
-            });
-
-            const result = await endpointConfig.POST(request);
-
-            expect(mockActivityLogger.logTouchActivity).toHaveBeenCalledWith(
-                ["app-1", "app-2", "app-3"],
-                "user@example.com",
-                "explorer"
-            );
-            expect(request.setStatus).toHaveBeenCalledWith(HttpStatusCode.Success_204_NoContent);
-            expect(result).toBeUndefined();
+    describe("POST handler - object format (new)", () => {
+        beforeEach(() => {
+            // Mock billing functions to prevent errors from unmocked functions
+            mockCacheManager.getOrganizations.mockResolvedValue([]);
+            mockCacheManager.getApps.mockResolvedValue(new Map());
+            mockEvaluateClaimCandidates.mockReturnValue({ candidates: [], publisherMatchFound: false });
         });
 
-        it("should return 204 No Content on success", async () => {
+        it("should return 204 No Content for valid object format request", async () => {
             const request = createMockRequest({
-                apps: ["app-1"],
+                apps: [{ id: "app-1", publisher: "Pub" }],
                 feature: "explorer",
             });
 
@@ -88,19 +81,43 @@ describe("touch", () => {
             expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
         });
 
-        it("should handle single app", async () => {
+        it("should return 204 for multiple apps", async () => {
             const request = createMockRequest({
-                apps: ["app-1"],
-                feature: "getNext",
+                apps: [
+                    { id: "app-1", publisher: "Pub A" },
+                    { id: "app-2", publisher: "Pub B" },
+                ],
+                feature: "explorer",
             });
 
             await endpointConfig.POST(request);
 
-            expect(mockActivityLogger.logTouchActivity).toHaveBeenCalledWith(
-                ["app-1"],
-                "user@example.com",
-                "getNext"
-            );
+            expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
+        });
+    });
+
+    describe("POST handler - legacy format (string array)", () => {
+        it("should return 204 for legacy string array format", async () => {
+            const request = createMockRequest({
+                apps: ["app-1", "app-2", "app-3"],
+                feature: "explorer",
+            });
+
+            const result = await endpointConfig.POST(request);
+
+            expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
+            expect(result).toBeUndefined();
+        });
+
+        it("should return 204 for single string legacy format", async () => {
+            const request = createMockRequest({
+                apps: ["app-1"],
+                feature: "explorer",
+            });
+
+            await endpointConfig.POST(request);
+
+            expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
         });
     });
 
@@ -113,7 +130,6 @@ describe("touch", () => {
 
             const result = await endpointConfig.POST(request);
 
-            expect(mockActivityLogger.logTouchActivity).not.toHaveBeenCalled();
             expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
             expect(result).toBeUndefined();
         });
@@ -125,7 +141,6 @@ describe("touch", () => {
 
             const result = await endpointConfig.POST(request);
 
-            expect(mockActivityLogger.logTouchActivity).not.toHaveBeenCalled();
             expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
             expect(result).toBeUndefined();
         });
@@ -138,32 +153,29 @@ describe("touch", () => {
 
             const result = await endpointConfig.POST(request);
 
-            expect(mockActivityLogger.logTouchActivity).not.toHaveBeenCalled();
             expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
             expect(result).toBeUndefined();
         });
 
         it("should return 204 when feature is missing", async () => {
             const request = createMockRequest({
-                apps: ["app-1"],
+                apps: [{ id: "app-1", publisher: "Pub" }],
             });
 
             const result = await endpointConfig.POST(request);
 
-            expect(mockActivityLogger.logTouchActivity).not.toHaveBeenCalled();
             expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
             expect(result).toBeUndefined();
         });
 
         it("should return 204 when feature is not a string", async () => {
             const request = createMockRequest({
-                apps: ["app-1"],
+                apps: [{ id: "app-1", publisher: "Pub" }],
                 feature: 123,
             });
 
             const result = await endpointConfig.POST(request);
 
-            expect(mockActivityLogger.logTouchActivity).not.toHaveBeenCalled();
             expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
             expect(result).toBeUndefined();
         });
@@ -171,15 +183,14 @@ describe("touch", () => {
         it("should return 204 when email is missing", async () => {
             const request = createMockRequest(
                 {
-                    apps: ["app-1"],
+                    apps: [{ id: "app-1", publisher: "Pub" }],
                     feature: "explorer",
                 },
-                { email: "" } // Empty email
+                { email: "" }
             );
 
             const result = await endpointConfig.POST(request);
 
-            expect(mockActivityLogger.logTouchActivity).not.toHaveBeenCalled();
             expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
             expect(result).toBeUndefined();
         });
@@ -187,55 +198,16 @@ describe("touch", () => {
         it("should return 204 when user is missing", async () => {
             const request = createMockRequest(
                 {
-                    apps: ["app-1"],
+                    apps: [{ id: "app-1", publisher: "Pub" }],
                     feature: "explorer",
                 },
-                null // No user
+                null
             );
 
             const result = await endpointConfig.POST(request);
 
-            expect(mockActivityLogger.logTouchActivity).not.toHaveBeenCalled();
             expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
             expect(result).toBeUndefined();
-        });
-    });
-
-    describe("POST handler - error handling", () => {
-        it("should gracefully handle logging failures", async () => {
-            const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation();
-            mockActivityLogger.logTouchActivity.mockRejectedValue(new Error("Blob write failed"));
-
-            const request = createMockRequest({
-                apps: ["app-1"],
-                feature: "explorer",
-            });
-
-            // Should not throw
-            const result = await endpointConfig.POST(request);
-
-            expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
-            expect(result).toBeUndefined();
-            expect(consoleErrorSpy).toHaveBeenCalledWith("Touch activity logging failed:", expect.any(Error));
-            
-            consoleErrorSpy.mockRestore();
-        });
-
-        it("should still return 204 even when logging fails", async () => {
-            const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation();
-            mockActivityLogger.logTouchActivity.mockRejectedValue(new Error("Network error"));
-
-            const request = createMockRequest({
-                apps: ["app-1", "app-2"],
-                feature: "explorer",
-            });
-
-            await endpointConfig.POST(request);
-
-            expect(request.status).toBe(HttpStatusCode.Success_204_NoContent);
-            expect(consoleErrorSpy).toHaveBeenCalledWith("Touch activity logging failed:", expect.any(Error));
-            
-            consoleErrorSpy.mockRestore();
         });
     });
 });

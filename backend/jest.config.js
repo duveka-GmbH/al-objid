@@ -8,7 +8,5 @@ module.exports = {
     collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts"],
     coverageDirectory: "coverage",
     verbose: true,
-    moduleNameMapper: {
-        "^@vjeko\\.com/azure-blob$": "<rootDir>/test/__mocks__/@vjeko.com/azure-blob.ts",
-    },
+    setupFiles: ["<rootDir>/test/setup.ts"],
 };

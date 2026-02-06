@@ -1,14 +1,15 @@
 import { AzureHttpRequest, UserInfo } from "./AzureHttpRequest";
+import { ParsedNinjaHeaders } from "./parseNinjaHeaders";
 
 /**
- * Extracts user information from request headers and binds to the request object.
- * Reads Ninja-Git-Name and Ninja-Git-Email headers.
- * Only binds if at least one header is present; leaves user undefined if neither.
+ * Binds user information from parsed headers to the request object.
+ * Only binds if at least one value is present; leaves user undefined if neither.
  * @param azureRequest - The request object to bind user info to
+ * @param headers - Parsed Ninja headers containing git user info
  */
-export function bindUser(azureRequest: AzureHttpRequest): void {
-    const name = azureRequest.headers.get("Ninja-Git-Name")?.trim() || undefined;
-    const email = azureRequest.headers.get("Ninja-Git-Email")?.trim().toLowerCase() || undefined;
+export function bindUser(azureRequest: AzureHttpRequest, headers: ParsedNinjaHeaders): void {
+    const name = headers.gitUserName;
+    const email = headers.gitUserEmail;
 
     if (!name && !email) {
         return;
@@ -24,4 +25,3 @@ export function bindUser(azureRequest: AzureHttpRequest): void {
 
     azureRequest.user = user;
 }
-

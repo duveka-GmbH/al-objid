@@ -4,13 +4,11 @@ import { SingleAppHttpRequestSymbol, SingleAppHttpRequestOptionalSymbol } from "
 import { UserInfo } from "../../../src/http";
 import { AppCache } from "../../../src/cache";
 import * as loggingModule from "../../../src/utils/logging";
-import { ActivityLogger } from "../../../src/activity";
 
 jest.mock("@vjeko.com/azure-blob");
 jest.mock("../../../src/http/createEndpoint");
 jest.mock("../../../src/cache");
 jest.mock("../../../src/utils/logging");
-jest.mock("../../../src/activity");
 
 const mockCreateEndpoint = createEndpoint as jest.MockedFunction<typeof createEndpoint>;
 
@@ -25,7 +23,6 @@ describe("storeAssignment", () => {
     const MockBlob = Blob as jest.MockedClass<typeof Blob>;
     const mockAppCache = AppCache as jest.Mocked<typeof AppCache>;
     const mockLogAppEvent = loggingModule.logAppEvent as jest.MockedFunction<typeof loggingModule.logAppEvent>;
-    const mockActivityLogger = ActivityLogger as jest.Mocked<typeof ActivityLogger>;
 
     // Get both endpoint configs (storeAssignment and storeAssignmentDelete)
     const storeAssignmentConfig = capturedConfigs.find(c => c.moniker === "v3-storeAssignment");
@@ -64,7 +61,6 @@ describe("storeAssignment", () => {
 
         MockBlob.mockImplementation(() => mockBlobInstance as any);
         mockLogAppEvent.mockResolvedValue(undefined);
-        mockActivityLogger.logActivity.mockResolvedValue(undefined);
     });
 
     describe("storeAssignment endpoint configuration", () => {
@@ -436,164 +432,6 @@ describe("storeAssignment", () => {
                 undefined,
                 { type: "codeunit", id: 50000 }
             );
-        });
-    });
-
-    describe("activity logging - add assignment", () => {
-        it("should call ActivityLogger.logActivity with ninjaAppId, email, and addAssignment feature", async () => {
-            const testUser: UserInfo = { name: "Test User", email: "test@example.com" };
-            mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn(null));
-            const request = createMockRequest({}, {
-                params: { appId: "test-app-id", type: "codeunit", id: "50000" },
-                user: testUser,
-                headers: {
-                    get: jest.fn().mockImplementation((name: string) =>
-                        name === "Ninja-App-Id" ? "ninja-app-guid" : null
-                    ),
-                },
-            });
-
-            await storeAssignmentConfig.POST(request);
-
-            expect(mockActivityLogger.logActivity).toHaveBeenCalledWith(
-                "ninja-app-guid",
-                "test@example.com",
-                "addAssignment"
-            );
-        });
-
-        it("should use empty string for email when user is undefined", async () => {
-            mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn(null));
-            const request = createMockRequest({}, {
-                params: { appId: "test-app-id", type: "codeunit", id: "50000" },
-                user: undefined,
-                headers: {
-                    get: jest.fn().mockImplementation((name: string) =>
-                        name === "Ninja-App-Id" ? "ninja-app-guid" : null
-                    ),
-                },
-            });
-
-            await storeAssignmentConfig.POST(request);
-
-            expect(mockActivityLogger.logActivity).toHaveBeenCalledWith(
-                "ninja-app-guid",
-                "",
-                "addAssignment"
-            );
-        });
-
-        it("should not call ActivityLogger.logActivity when Ninja-App-Id header is missing", async () => {
-            mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn(null));
-            const request = createMockRequest({}, {
-                params: { appId: "test-app-id", type: "codeunit", id: "50000" },
-                headers: {
-                    get: jest.fn().mockReturnValue(null),
-                },
-            });
-
-            await storeAssignmentConfig.POST(request);
-
-            expect(mockActivityLogger.logActivity).not.toHaveBeenCalled();
-        });
-
-        it("should handle ActivityLogger errors gracefully", async () => {
-            const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation();
-            mockActivityLogger.logActivity.mockRejectedValue(new Error("Logging failed"));
-            mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn(null));
-            const request = createMockRequest({}, {
-                params: { appId: "test-app-id", type: "codeunit", id: "50000" },
-                headers: {
-                    get: jest.fn().mockImplementation((name: string) =>
-                        name === "Ninja-App-Id" ? "ninja-app-guid" : null
-                    ),
-                },
-            });
-
-            const result = await storeAssignmentConfig.POST(request);
-
-            expect(result).toEqual({ updated: true });
-            expect(consoleErrorSpy).toHaveBeenCalledWith("Activity logging failed:", expect.any(Error));
-            consoleErrorSpy.mockRestore();
-        });
-    });
-
-    describe("activity logging - remove assignment", () => {
-        it("should call ActivityLogger.logActivity with ninjaAppId, email, and removeAssignment feature", async () => {
-            const testUser: UserInfo = { name: "Test User", email: "test@example.com" };
-            mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn({ codeunit: [50000] }));
-            const request = createMockRequest({}, {
-                params: { appId: "test-app-id", type: "codeunit", id: "50000" },
-                user: testUser,
-                headers: {
-                    get: jest.fn().mockImplementation((name: string) =>
-                        name === "Ninja-App-Id" ? "ninja-app-guid" : null
-                    ),
-                },
-            });
-
-            await storeAssignmentDeleteConfig.POST(request);
-
-            expect(mockActivityLogger.logActivity).toHaveBeenCalledWith(
-                "ninja-app-guid",
-                "test@example.com",
-                "removeAssignment"
-            );
-        });
-
-        it("should use empty string for email when user is undefined", async () => {
-            mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn({ codeunit: [50000] }));
-            const request = createMockRequest({}, {
-                params: { appId: "test-app-id", type: "codeunit", id: "50000" },
-                user: undefined,
-                headers: {
-                    get: jest.fn().mockImplementation((name: string) =>
-                        name === "Ninja-App-Id" ? "ninja-app-guid" : null
-                    ),
-                },
-            });
-
-            await storeAssignmentDeleteConfig.POST(request);
-
-            expect(mockActivityLogger.logActivity).toHaveBeenCalledWith(
-                "ninja-app-guid",
-                "",
-                "removeAssignment"
-            );
-        });
-
-        it("should not call ActivityLogger.logActivity when Ninja-App-Id header is missing", async () => {
-            mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn({ codeunit: [50000] }));
-            const request = createMockRequest({}, {
-                params: { appId: "test-app-id", type: "codeunit", id: "50000" },
-                headers: {
-                    get: jest.fn().mockReturnValue(null),
-                },
-            });
-
-            await storeAssignmentDeleteConfig.POST(request);
-
-            expect(mockActivityLogger.logActivity).not.toHaveBeenCalled();
-        });
-
-        it("should handle ActivityLogger errors gracefully", async () => {
-            const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation();
-            mockActivityLogger.logActivity.mockRejectedValue(new Error("Logging failed"));
-            mockBlobInstance.optimisticUpdate.mockImplementation((fn: Function) => fn({ codeunit: [50000] }));
-            const request = createMockRequest({}, {
-                params: { appId: "test-app-id", type: "codeunit", id: "50000" },
-                headers: {
-                    get: jest.fn().mockImplementation((name: string) =>
-                        name === "Ninja-App-Id" ? "ninja-app-guid" : null
-                    ),
-                },
-            });
-
-            const result = await storeAssignmentDeleteConfig.POST(request);
-
-            expect(result).toEqual({ updated: true });
-            expect(consoleErrorSpy).toHaveBeenCalledWith("Activity logging failed:", expect.any(Error));
-            consoleErrorSpy.mockRestore();
         });
     });
 });

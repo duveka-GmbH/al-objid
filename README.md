@@ -16,6 +16,14 @@ This is a monorepo containing the following repos:
 - VS Code Extension at [extension](./extension)
 - Documentation at [doc](./doc)
 
+> **This is not the master code repository.** It contains only what self-hosting companies need to deploy their own infrastructure if they choose that path. The full platform is available at **[https://alid.ninja](https://alid.ninja)**. A private repository holds the authoritative, up-to-date versions of all components; this public repository is kept in sync when important or breaking changes are introduced in either the extension or the backend.
+
+## MCP Server
+
+AL Object ID Ninja has an official [MCP Server](MCP.md) for AI-assisted object ID management in Cursor, Claude Code, and other MCP-capable tools.
+
+> **The official MCP Server is not available to self-hosting companies.** If you are self-hosting the backend, you must build and run your own MCP server that talks to your infrastructure.
+
 ## Contributing to this repository
 
 Your contributions are welcome. If you want to contribute a feature, bug fix, improvement, or something

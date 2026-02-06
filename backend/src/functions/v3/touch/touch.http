@@ -1,0 +1,23 @@
+POST http://localhost:7072/api/v3/touch
+Content-Type: application/json
+Ninja-App-Id: 804251cd-516b-4dd7-ba24-87b3759350b6
+Ninja-Header-Payload: eyJnaXRVc2VyTmFtZSI6IlZqZWtvIiwiZ2l0VXNlckVtYWlsIjoidmpla29Admpla28uY29tIiwiYXBwUHVibGlzaGVyIjoiRXZlbnRzIENlbnRyYWwgQXBTIiwiYXBwTmFtZSI6IkV2ZW50IFJlZ2lzdHJhdGlvbiBNYW5hZ2VtZW50IiwiYXBwVmVyc2lvbiI6IjI2LjAuMjAyNjAyLjEyMTciLCJuaW5qYVZlcnNpb24iOiIzLjEuMSJ9
+
+{
+  "feature": "start",
+  "apps": [
+    {
+      "id": "804251cd-516b-4dd7-ba24-87b3759350b6",
+      "publisher": "Events Central ApS"
+    },
+    {
+      "id": "98c94785-d6e8-4b19-8785-c3a411be446d",
+      "publisher": "Events Central ApS"
+    },
+    {
+      "id": "238d1717-1705-4706-a90e-0eb8eb9231aa",
+      "publisher": "Events Central ApS"
+    }
+  ]
+}
+

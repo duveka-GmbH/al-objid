@@ -1,6 +1,6 @@
 # Deploying a Self-Maintained Back End
 
-**Last change**: December 14, 2025
+**Last change**: February 2, 2025
 
 AL Object ID Ninja uses a public API to manage object IDs. While this API is deployed on Microsoft Azure
 infrastructure and uses secure HTTPS communication, you may prefer using your own Azure subscription and
@@ -11,6 +11,29 @@ This document explains how to deploy your own Azure Functions back end for AL Ob
 > **Version note (v3)**: These instructions are for the **v3 back-end endpoints**. If you previously
 > deployed a private back end for **v2**, keep it running and deploy this **v3 back end in parallel**—the
 > AL Object ID Ninja **v3 VS Code extension is not compatible with v2 endpoints**.
+
+## Self-Hosted vs. Public Platform
+
+There is **no full feature parity** between a self-hosted back end and the public platform at
+[alid.ninja](https://alid.ninja/). Some capabilities are available only on the public platform for
+**technical reasons** (they depend on centralized data or infrastructure that a private deployment
+cannot provide).
+
+Choosing self-hosting is a good fit if the [terms of service](https://alid.ninja/terms) of the
+public platform are unacceptable to you. If your goal is to **save money**, be aware that running
+your own back end will often **cost more** (Azure resources, setup, and maintenance) while delivering
+a **weaker experience** than the public platform.
+
+### Features Only on the Public Platform
+
+The following are **not available** when you use a self-hosted back end:
+
+- **MCP Server for agentic assignment of object IDs** — Lets AI tools (Cursor, Claude Code,
+  Windsurf, etc.) request, commit, and unassign IDs; see [AL Object ID Ninja MCP Server Is
+  Here](https://vjeko.com/2026/02/02/al-object-id-ninja-mcp-server-is-here/).
+- **Duplicate app detection** — Alerts and protection when your App ID conflicts with another known
+  app; see [When GUIDs Collide: The App ID Problem Nobody
+  Expected](https://vjeko.com/2026/01/27/when-guids-collide-the-app-id-problem-nobody-expected/).
 
 ## Infrastructure Description
 
@@ -108,6 +131,12 @@ When configuring the host name, do not use the full URL. For example, if your fu
 configuration value.
 
 # Change Log
+
+### February 2, 2025
+
+Added "Self-Hosted vs. Public Platform" section: no full feature parity, technical reasons for
+missing features, when self-hosting makes sense (ToS) vs. cost/experience trade-off. Documented
+public-only features: MCP Server for agentic assignment, duplicate app detection (with blog links).
 
 ### December 14, 2025
 

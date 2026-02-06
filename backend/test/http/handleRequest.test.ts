@@ -11,20 +11,15 @@ import {
     MultiAppHttpRequestOptionalSymbol,
     SkipAuthorizationSymbol,
 } from "../../src/http/AzureHttpRequest";
-import { PermissionCheckSymbol } from "../../src/permission/withPermissionCheck";
 import * as getBodyModule from "../../src/http/getBody";
 import * as validateModule from "../../src/http/validate";
 import * as bindAppModule from "../../src/http/bindApp";
 import * as bindUserModule from "../../src/http/bindUser";
-import * as bindPermissionModule from "../../src/permission/bindPermission";
-import * as privateBackendModule from "../../src/utils/privateBackend";
 
 jest.mock("../../src/http/getBody");
 jest.mock("../../src/http/validate");
 jest.mock("../../src/http/bindApp");
 jest.mock("../../src/http/bindUser");
-jest.mock("../../src/permission/bindPermission");
-jest.mock("../../src/utils/privateBackend");
 
 describe("handleRequest", () => {
     const mockGetBody = getBodyModule.getBody as jest.MockedFunction<typeof getBodyModule.getBody>;
@@ -34,10 +29,6 @@ describe("handleRequest", () => {
     const mockBindMultiApp = bindAppModule.bindMultiApp as jest.MockedFunction<typeof bindAppModule.bindMultiApp>;
     const mockBindMultiAppOptional = bindAppModule.bindMultiAppOptional as jest.MockedFunction<typeof bindAppModule.bindMultiAppOptional>;
     const mockBindUser = bindUserModule.bindUser as jest.MockedFunction<typeof bindUserModule.bindUser>;
-    const mockBindPermission = bindPermissionModule.bindPermission as jest.MockedFunction<typeof bindPermissionModule.bindPermission>;
-    const mockEnforcePermission = bindPermissionModule.enforcePermission as jest.MockedFunction<typeof bindPermissionModule.enforcePermission>;
-    const mockGetPermissionWarning = bindPermissionModule.getPermissionWarning as jest.MockedFunction<typeof bindPermissionModule.getPermissionWarning>;
-    const mockIsPrivateBackend = privateBackendModule.isPrivateBackend as jest.MockedFunction<typeof privateBackendModule.isPrivateBackend>;
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -48,15 +39,14 @@ describe("handleRequest", () => {
         mockBindMultiApp.mockResolvedValue(undefined);
         mockBindMultiAppOptional.mockResolvedValue(undefined);
         mockBindUser.mockImplementation(() => undefined);
-        mockBindPermission.mockResolvedValue(undefined);
-        mockEnforcePermission.mockImplementation(() => undefined);
-        mockGetPermissionWarning.mockReturnValue(undefined);
-        mockIsPrivateBackend.mockReturnValue(false);
     });
 
     const createMockHttpRequest = (overrides: Partial<HttpRequest> = {}): HttpRequest => {
         return {
-            headers: new Map([["content-type", "application/json"]]) as any,
+            headers: new Map([
+                ["content-type", "application/json"],
+                ["Ninja-Version", "99.0.0"],
+            ]) as any,
             query: new URLSearchParams(),
             params: { id: "123" },
             url: "http://test.com/api/test",
@@ -288,22 +278,24 @@ describe("handleRequest", () => {
             expect(result.body).toBe("Server error");
         });
 
-        it("should return undefined when non-ErrorResponse error is thrown", async () => {
+        it("should return 500 with error message when non-ErrorResponse error is thrown", async () => {
             const handler: AzureHttpHandler = jest.fn().mockRejectedValue(new Error("Unexpected error"));
             const request = createMockHttpRequest();
 
             const result = await handleRequest(handler, request);
 
-            expect(result).toBeUndefined();
+            expect(result.status).toBe(HttpStatusCode.ServerError_500_InternalServerError);
+            expect(result.body).toBe("Unexpected error");
         });
 
-        it("should return undefined when handler throws a string", async () => {
+        it("should return 500 with generic message when handler throws a non-Error", async () => {
             const handler: AzureHttpHandler = jest.fn().mockRejectedValue("Something went wrong");
             const request = createMockHttpRequest();
 
             const result = await handleRequest(handler, request);
 
-            expect(result).toBeUndefined();
+            expect(result.status).toBe(HttpStatusCode.ServerError_500_InternalServerError);
+            expect(result.body).toBe("Internal server error");
         });
     });
 
@@ -341,6 +333,7 @@ describe("handleRequest", () => {
             const headers = new Map([
                 ["authorization", "Bearer token123"],
                 ["content-type", "application/json"],
+                ["Ninja-Version", "99.0.0"],
             ]);
             const request = createMockHttpRequest({ headers: headers as any });
 
@@ -822,7 +815,7 @@ describe("handleRequest", () => {
 
             await handleRequest(handler, request);
 
-            expect(mockBindUser).toHaveBeenCalledWith(expect.any(Object));
+            expect(mockBindUser).toHaveBeenCalledWith(expect.any(Object), expect.any(Object));
         });
 
         it("should call bindUser after validation", async () => {
@@ -870,405 +863,6 @@ describe("handleRequest", () => {
             expect(mockBindUser).toHaveBeenCalled();
             expect(mockBindSingleApp).not.toHaveBeenCalled();
             expect(mockBindMultiApp).not.toHaveBeenCalled();
-        });
-    });
-
-    describe("permission checking", () => {
-        it("should call bindPermission and enforcePermission when handler has PermissionCheckSymbol", async () => {
-            const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-            handler[PermissionCheckSymbol] = true;
-            const request = createMockHttpRequest();
-
-            await handleRequest(handler, request);
-
-            expect(mockBindPermission).toHaveBeenCalledWith(expect.any(Object));
-            expect(mockEnforcePermission).toHaveBeenCalledWith(expect.any(Object));
-        });
-
-        it("should not call bindPermission when handler does not have PermissionCheckSymbol", async () => {
-            const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-            const request = createMockHttpRequest();
-
-            await handleRequest(handler, request);
-
-            expect(mockBindPermission).not.toHaveBeenCalled();
-            expect(mockEnforcePermission).not.toHaveBeenCalled();
-        });
-
-        it("should call permission check after bindUser", async () => {
-            const callOrder: string[] = [];
-            mockBindUser.mockImplementation(() => {
-                callOrder.push("bindUser");
-            });
-            mockBindPermission.mockImplementation(async () => {
-                callOrder.push("bindPermission");
-            });
-            mockEnforcePermission.mockImplementation(() => {
-                callOrder.push("enforcePermission");
-            });
-
-            const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-            handler[PermissionCheckSymbol] = true;
-            const request = createMockHttpRequest();
-
-            await handleRequest(handler, request);
-
-            expect(callOrder).toEqual(["bindUser", "bindPermission", "enforcePermission"]);
-        });
-
-        it("should call permission check before app binding", async () => {
-            const callOrder: string[] = [];
-            mockBindPermission.mockImplementation(async () => {
-                callOrder.push("bindPermission");
-            });
-            mockEnforcePermission.mockImplementation(() => {
-                callOrder.push("enforcePermission");
-            });
-            mockBindSingleApp.mockImplementation(async () => {
-                callOrder.push("bindSingleApp");
-            });
-
-            const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-            handler[PermissionCheckSymbol] = true;
-            handler[SingleAppHttpRequestSymbol] = true;
-            const request = createMockHttpRequest({ params: { appId: "test-app" } });
-
-            await handleRequest(handler, request);
-
-            expect(callOrder).toEqual(["bindPermission", "enforcePermission", "bindSingleApp"]);
-        });
-
-        it("should return 400 when bindPermission throws ErrorResponse (missing header)", async () => {
-            mockBindPermission.mockRejectedValue(
-                new ErrorResponse("Ninja-App-Id header is required", HttpStatusCode.ClientError_400_BadRequest)
-            );
-
-            const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-            handler[PermissionCheckSymbol] = true;
-            const request = createMockHttpRequest();
-
-            const result = await handleRequest(handler, request);
-
-            expect(result.status).toBe(HttpStatusCode.ClientError_400_BadRequest);
-            expect(result.body).toBe("Ninja-App-Id header is required");
-            expect(handler).not.toHaveBeenCalled();
-        });
-
-        it("should return 403 when enforcePermission throws ErrorResponse (denied)", async () => {
-            mockEnforcePermission.mockImplementation(() => {
-                throw new ErrorResponse(
-                    JSON.stringify({ error: { code: "GRACE_EXPIRED" } }),
-                    HttpStatusCode.ClientError_403_Forbidden
-                );
-            });
-
-            const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-            handler[PermissionCheckSymbol] = true;
-            const request = createMockHttpRequest();
-
-            const result = await handleRequest(handler, request);
-
-            expect(result.status).toBe(HttpStatusCode.ClientError_403_Forbidden);
-            const body = JSON.parse(result.body as string);
-            expect(body.error.code).toBe("GRACE_EXPIRED");
-            expect(handler).not.toHaveBeenCalled();
-        });
-
-        it("should add warning to response body when getPermissionWarning returns warning", async () => {
-            const warning = { code: "APP_GRACE_PERIOD", timeRemaining: 86400000 };
-            mockGetPermissionWarning.mockReturnValue(warning as any);
-
-            const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ updated: true });
-            handler[PermissionCheckSymbol] = true;
-            const request = createMockHttpRequest();
-
-            const result = await handleRequest(handler, request);
-
-            const body = JSON.parse(result.body as string);
-            expect(body.updated).toBe(true);
-            expect(body.warning).toEqual(warning);
-        });
-
-        it("should not add warning to response when getPermissionWarning returns undefined", async () => {
-            mockGetPermissionWarning.mockReturnValue(undefined);
-
-            const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ updated: true });
-            handler[PermissionCheckSymbol] = true;
-            const request = createMockHttpRequest();
-
-            const result = await handleRequest(handler, request);
-
-            const body = JSON.parse(result.body as string);
-            expect(body.updated).toBe(true);
-            expect(body.warning).toBeUndefined();
-        });
-
-        it("should not add warning to string response", async () => {
-            const warning = { code: "APP_GRACE_PERIOD", timeRemaining: 86400000 };
-            mockGetPermissionWarning.mockReturnValue(warning as any);
-
-            const handler: AzureHttpHandler = jest.fn().mockResolvedValue("plain text");
-            handler[PermissionCheckSymbol] = true;
-            const request = createMockHttpRequest();
-
-            const result = await handleRequest(handler, request);
-
-            expect(result.body).toBe("plain text");
-        });
-    });
-
-    describe("private backend mode", () => {
-        describe("Given: PRIVATE_BACKEND is enabled", () => {
-            beforeEach(() => {
-                mockIsPrivateBackend.mockReturnValue(true);
-            });
-
-            it("should skip permission check when handler has PermissionCheckSymbol", async () => {
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                await handleRequest(handler, request);
-
-                expect(mockBindPermission).not.toHaveBeenCalled();
-                expect(mockEnforcePermission).not.toHaveBeenCalled();
-            });
-
-            it("should allow request even when permission would normally be denied (400 - missing header)", async () => {
-                // In normal mode, this would throw 400 for missing Ninja-App-Id
-                mockBindPermission.mockRejectedValue(
-                    new ErrorResponse("Ninja-App-Id header is required", HttpStatusCode.ClientError_400_BadRequest)
-                );
-
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                const result = await handleRequest(handler, request);
-
-                // Should succeed because permission check is skipped
-                expect(result.status).toBe(HttpStatusCode.Success_200_OK);
-                expect(handler).toHaveBeenCalled();
-            });
-
-            it("should allow request even when permission would normally be denied (403 - grace expired)", async () => {
-                // In normal mode, this would throw 403 for expired grace period
-                mockEnforcePermission.mockImplementation(() => {
-                    throw new ErrorResponse(
-                        JSON.stringify({ error: { code: "GRACE_EXPIRED" } }),
-                        HttpStatusCode.ClientError_403_Forbidden
-                    );
-                });
-
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                const result = await handleRequest(handler, request);
-
-                // Should succeed because permission check is skipped
-                expect(result.status).toBe(HttpStatusCode.Success_200_OK);
-                expect(handler).toHaveBeenCalled();
-            });
-
-            it("should allow request even when permission would normally be denied (403 - user not authorized)", async () => {
-                mockEnforcePermission.mockImplementation(() => {
-                    throw new ErrorResponse(
-                        JSON.stringify({ error: { code: "USER_NOT_AUTHORIZED", gitEmail: "user@example.com" } }),
-                        HttpStatusCode.ClientError_403_Forbidden
-                    );
-                });
-
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                const result = await handleRequest(handler, request);
-
-                expect(result.status).toBe(HttpStatusCode.Success_200_OK);
-                expect(handler).toHaveBeenCalled();
-            });
-
-            it("should allow request even when permission would normally be denied (403 - org flagged)", async () => {
-                mockEnforcePermission.mockImplementation(() => {
-                    throw new ErrorResponse(
-                        JSON.stringify({ error: { code: "ORG_FLAGGED" } }),
-                        HttpStatusCode.ClientError_403_Forbidden
-                    );
-                });
-
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                const result = await handleRequest(handler, request);
-
-                expect(result.status).toBe(HttpStatusCode.Success_200_OK);
-                expect(handler).toHaveBeenCalled();
-            });
-
-            it("should allow request even when permission would normally be denied (403 - subscription cancelled)", async () => {
-                mockEnforcePermission.mockImplementation(() => {
-                    throw new ErrorResponse(
-                        JSON.stringify({ error: { code: "SUBSCRIPTION_CANCELLED" } }),
-                        HttpStatusCode.ClientError_403_Forbidden
-                    );
-                });
-
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                const result = await handleRequest(handler, request);
-
-                expect(result.status).toBe(HttpStatusCode.Success_200_OK);
-                expect(handler).toHaveBeenCalled();
-            });
-
-            it("should allow request even when permission would normally be denied (403 - payment failed)", async () => {
-                mockEnforcePermission.mockImplementation(() => {
-                    throw new ErrorResponse(
-                        JSON.stringify({ error: { code: "PAYMENT_FAILED" } }),
-                        HttpStatusCode.ClientError_403_Forbidden
-                    );
-                });
-
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                const result = await handleRequest(handler, request);
-
-                expect(result.status).toBe(HttpStatusCode.Success_200_OK);
-                expect(handler).toHaveBeenCalled();
-            });
-
-            it("should not add permission warning to response", async () => {
-                const warning = { code: "APP_GRACE_PERIOD", timeRemaining: 86400000 };
-                mockGetPermissionWarning.mockReturnValue(warning as any);
-
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ updated: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                const result = await handleRequest(handler, request);
-
-                const body = JSON.parse(result.body as string);
-                expect(body.updated).toBe(true);
-                expect(body.warning).toBeUndefined();
-            });
-
-            it("should still call handler with correct request data", async () => {
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ id: 50000 });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest({ params: { appId: "test-app" } });
-
-                const result = await handleRequest(handler, request);
-
-                expect(handler).toHaveBeenCalledWith(
-                    expect.objectContaining({
-                        params: { appId: "test-app" },
-                    })
-                );
-                const body = JSON.parse(result.body as string);
-                expect(body.id).toBe(50000);
-            });
-
-            it("should still perform validation", async () => {
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                handler[ValidatorSymbol] = [{ name: "string" }];
-                const request = createMockHttpRequest();
-
-                await handleRequest(handler, request);
-
-                expect(mockPerformValidation).toHaveBeenCalled();
-            });
-
-            it("should still bind user", async () => {
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                await handleRequest(handler, request);
-
-                expect(mockBindUser).toHaveBeenCalled();
-            });
-
-            it("should still bind app data", async () => {
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                handler[SingleAppHttpRequestSymbol] = true;
-                const request = createMockHttpRequest({ params: { appId: "test-app" } });
-
-                await handleRequest(handler, request);
-
-                expect(mockBindSingleApp).toHaveBeenCalled();
-            });
-        });
-
-        describe("Given: PRIVATE_BACKEND is disabled (normal mode)", () => {
-            beforeEach(() => {
-                mockIsPrivateBackend.mockReturnValue(false);
-            });
-
-            it("should perform permission check when handler has PermissionCheckSymbol", async () => {
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                await handleRequest(handler, request);
-
-                expect(mockBindPermission).toHaveBeenCalled();
-                expect(mockEnforcePermission).toHaveBeenCalled();
-            });
-
-            it("should return 400 when Ninja-App-Id header is missing", async () => {
-                mockBindPermission.mockRejectedValue(
-                    new ErrorResponse("Ninja-App-Id header is required", HttpStatusCode.ClientError_400_BadRequest)
-                );
-
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                const result = await handleRequest(handler, request);
-
-                expect(result.status).toBe(HttpStatusCode.ClientError_400_BadRequest);
-                expect(handler).not.toHaveBeenCalled();
-            });
-
-            it("should return 403 when permission is denied", async () => {
-                mockEnforcePermission.mockImplementation(() => {
-                    throw new ErrorResponse(
-                        JSON.stringify({ error: { code: "GRACE_EXPIRED" } }),
-                        HttpStatusCode.ClientError_403_Forbidden
-                    );
-                });
-
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ success: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                const result = await handleRequest(handler, request);
-
-                expect(result.status).toBe(HttpStatusCode.ClientError_403_Forbidden);
-                expect(handler).not.toHaveBeenCalled();
-            });
-
-            it("should add permission warning to response when present", async () => {
-                const warning = { code: "APP_GRACE_PERIOD", timeRemaining: 86400000 };
-                mockGetPermissionWarning.mockReturnValue(warning as any);
-
-                const handler: AzureHttpHandler = jest.fn().mockResolvedValue({ updated: true });
-                handler[PermissionCheckSymbol] = true;
-                const request = createMockHttpRequest();
-
-                const result = await handleRequest(handler, request);
-
-                const body = JSON.parse(result.body as string);
-                expect(body.warning).toEqual(warning);
-            });
         });
     });
 });

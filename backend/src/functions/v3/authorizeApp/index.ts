@@ -7,10 +7,9 @@ import {
     skipAuthorization,
     appRequestMandatory,
 } from "../../../http";
-import { withPermissionCheck } from "../../../permission/withPermissionCheck";
+import { withSecurity, withUsageLogging } from "../../../billing";
 import { getSha256 } from "../../../utils";
 import { logAppEvent } from "../../../utils/logging";
-import { ActivityLogger } from "../../../activity";
 import { AppInfo } from "../../../types";
 import { createAuthorizeUpdateCallback, createDeauthorizeUpdateCallback } from "./updateCallbacks";
 import { AppCache } from "../../../cache";
@@ -50,16 +49,6 @@ const post: SingleAppHttpHandler<void, AuthorizeAppResponse> = async req => {
     const userName = req.user?.name || "";
     const userEmail = req.user?.email || "";
 
-    // Log activity (use Ninja-App-Id header, not req.appId which is the SHA256 hash)
-    const ninjaAppId = req.headers.get("Ninja-App-Id");
-    if (ninjaAppId) {
-        try {
-            await ActivityLogger.logActivity(ninjaAppId, userEmail, "authorizeApp");
-        } catch (err) {
-            console.error("Activity logging failed:", err);
-        }
-    }
-
     if (req.app?._authorization?.key) {
         throw new ErrorResponse(
             `You cannot authorize app ${req.appId} because it is already authorized.`,
@@ -87,16 +76,6 @@ const post: SingleAppHttpHandler<void, AuthorizeAppResponse> = async req => {
 // authKey comes from Ninja-Auth-Key header
 const del: SingleAppHttpHandler<void, AuthorizeAppResponse> = async req => {
     const authKey = req.headers.get("Ninja-Auth-Key");
-
-    // Log activity (use Ninja-App-Id header, not req.appId which is the SHA256 hash)
-    const ninjaAppId = req.headers.get("Ninja-App-Id");
-    if (ninjaAppId) {
-        try {
-            await ActivityLogger.logActivity(ninjaAppId, req.user?.email || "", "deauthorizeApp");
-        } catch (err) {
-            console.error("Activity logging failed:", err);
-        }
-    }
 
     // Note: Auto-binding already ensures app exists, but we check authorization state
     if (!req.app._authorization?.key) {
@@ -139,8 +118,10 @@ skipAuthorization(get);
 skipAuthorization(post);
 skipAuthorization(del);
 
-withPermissionCheck(post);
-withPermissionCheck(del);
+withSecurity(post);
+withSecurity(del);
+withUsageLogging(post);
+withUsageLogging(del);
 
 export const authorizeApp = createEndpoint({
     moniker: "v3-authorizeApp",

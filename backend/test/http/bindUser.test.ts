@@ -1,18 +1,12 @@
 import { bindUser } from "../../src/http/bindUser";
 import { AzureHttpRequest } from "../../src/http/AzureHttpRequest";
+import { ParsedNinjaHeaders } from "../../src/http/parseNinjaHeaders";
 
 describe("bindUser", () => {
-    const createMockRequest = (
-        userName: string | null,
-        userEmail: string | null
-    ): AzureHttpRequest => ({
+    const createMockRequest = (): AzureHttpRequest => ({
         method: "GET",
         headers: {
-            get: jest.fn((name: string) => {
-                if (name === "Ninja-Git-Name") return userName;
-                if (name === "Ninja-Git-Email") return userEmail;
-                return null;
-            }),
+            get: jest.fn(),
         } as any,
         params: {},
         body: {},
@@ -22,142 +16,101 @@ describe("bindUser", () => {
         markAsChanged: jest.fn(),
     });
 
+    const createHeaders = (
+        gitUserName?: string,
+        gitUserEmail?: string
+    ): ParsedNinjaHeaders => ({
+        gitUserName,
+        gitUserEmail,
+    });
+
     describe("both name and email present", () => {
         it("should bind user with both name and email", () => {
-            const request = createMockRequest("John Doe", "john@example.com");
+            const request = createMockRequest();
+            const headers = createHeaders("John Doe", "john@example.com");
 
-            bindUser(request);
-
-            expect(request.user).toEqual({
-                name: "John Doe",
-                email: "john@example.com",
-            });
-        });
-
-        it("should trim name and email", () => {
-            const request = createMockRequest("  John Doe  ", "  john@example.com  ");
-
-            bindUser(request);
+            bindUser(request, headers);
 
             expect(request.user).toEqual({
                 name: "John Doe",
                 email: "john@example.com",
             });
-        });
-
-        it("should lowercase email", () => {
-            const request = createMockRequest("John Doe", "JOHN@EXAMPLE.COM");
-
-            bindUser(request);
-
-            expect(request.user?.email).toBe("john@example.com");
         });
     });
 
     describe("only name present", () => {
-        it("should bind user with only name when email is null", () => {
-            const request = createMockRequest("John Doe", null);
+        it("should bind user with only name when email is undefined", () => {
+            const request = createMockRequest();
+            const headers = createHeaders("John Doe", undefined);
 
-            bindUser(request);
+            bindUser(request, headers);
 
             expect(request.user).toEqual({ name: "John Doe" });
             expect(request.user?.email).toBeUndefined();
         });
-
-        it("should bind user with only name when email is empty string", () => {
-            const request = createMockRequest("John Doe", "");
-
-            bindUser(request);
-
-            expect(request.user).toEqual({ name: "John Doe" });
-        });
-
-        it("should bind user with only name when email is whitespace", () => {
-            const request = createMockRequest("John Doe", "   ");
-
-            bindUser(request);
-
-            expect(request.user).toEqual({ name: "John Doe" });
-        });
     });
 
     describe("only email present", () => {
-        it("should bind user with only email when name is null", () => {
-            const request = createMockRequest(null, "john@example.com");
+        it("should bind user with only email when name is undefined", () => {
+            const request = createMockRequest();
+            const headers = createHeaders(undefined, "john@example.com");
 
-            bindUser(request);
+            bindUser(request, headers);
 
             expect(request.user).toEqual({ email: "john@example.com" });
             expect(request.user?.name).toBeUndefined();
         });
-
-        it("should bind user with only email when name is empty string", () => {
-            const request = createMockRequest("", "john@example.com");
-
-            bindUser(request);
-
-            expect(request.user).toEqual({ email: "john@example.com" });
-        });
-
-        it("should bind user with only email when name is whitespace", () => {
-            const request = createMockRequest("   ", "john@example.com");
-
-            bindUser(request);
-
-            expect(request.user).toEqual({ email: "john@example.com" });
-        });
-
-        it("should lowercase email when binding only email", () => {
-            const request = createMockRequest(null, "JOHN@EXAMPLE.COM");
-
-            bindUser(request);
-
-            expect(request.user?.email).toBe("john@example.com");
-        });
     });
 
     describe("neither name nor email present", () => {
-        it("should not bind user when both are null", () => {
-            const request = createMockRequest(null, null);
+        it("should not bind user when both are undefined", () => {
+            const request = createMockRequest();
+            const headers = createHeaders(undefined, undefined);
 
-            bindUser(request);
-
-            expect(request.user).toBeUndefined();
-        });
-
-        it("should not bind user when both are empty strings", () => {
-            const request = createMockRequest("", "");
-
-            bindUser(request);
+            bindUser(request, headers);
 
             expect(request.user).toBeUndefined();
         });
 
-        it("should not bind user when both are whitespace", () => {
-            const request = createMockRequest("   ", "   ");
+        it("should not bind user with empty headers object", () => {
+            const request = createMockRequest();
+            const headers: ParsedNinjaHeaders = {};
 
-            bindUser(request);
+            bindUser(request, headers);
 
             expect(request.user).toBeUndefined();
         });
     });
 
-    describe("header reading", () => {
-        it("should read Ninja-Git-Name header", () => {
-            const request = createMockRequest("Test User", null);
+    describe("user object structure", () => {
+        it("should only include name property when email is undefined", () => {
+            const request = createMockRequest();
+            const headers = createHeaders("John Doe", undefined);
 
-            bindUser(request);
+            bindUser(request, headers);
 
-            expect(request.headers.get).toHaveBeenCalledWith("Ninja-Git-Name");
+            expect(request.user).toHaveProperty("name");
+            expect(request.user).not.toHaveProperty("email");
         });
 
-        it("should read Ninja-Git-Email header", () => {
-            const request = createMockRequest(null, "test@example.com");
+        it("should only include email property when name is undefined", () => {
+            const request = createMockRequest();
+            const headers = createHeaders(undefined, "john@example.com");
 
-            bindUser(request);
+            bindUser(request, headers);
 
-            expect(request.headers.get).toHaveBeenCalledWith("Ninja-Git-Email");
+            expect(request.user).not.toHaveProperty("name");
+            expect(request.user).toHaveProperty("email");
+        });
+
+        it("should include both properties when both are present", () => {
+            const request = createMockRequest();
+            const headers = createHeaders("John Doe", "john@example.com");
+
+            bindUser(request, headers);
+
+            expect(request.user).toHaveProperty("name");
+            expect(request.user).toHaveProperty("email");
         });
     });
 });
-
