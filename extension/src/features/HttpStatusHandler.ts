@@ -97,6 +97,16 @@ export class HttpStatusHandler extends DisposableHolder {
 
     //#endregion
 
+    //#region 426 Upgrade Required
+
+    public async handleError426(message: string) {
+        await window.showErrorMessage(
+            message || `This version of AL Object ID Ninja is not supported by the back end. Please update the extension.`
+        );
+    }
+
+    //#endregion
+
     //#region  503 Service Unavailable
 
     public async handleError503(error: any) {

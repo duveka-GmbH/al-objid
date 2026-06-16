@@ -1,22 +1,22 @@
 {
-    "name": "vjeko-al-objid",
-    "displayName": "AL Object ID Ninja",
+    "name": "duveka-al-objid",
+    "displayName": "duveka AL Object ID Ninja",
     "description": "Manage object IDs in multi-user environments with mind-boggling simplicity.",
-    "publisher": "vjeko",
-    "version": "3.0.6",
+    "publisher": "duvekaGmbH",
+    "version": "3.1.7",
     "repository": {
         "type": "git",
-        "url": "https://github.com/vjekob/al-objid.git"
+        "url": "https://github.com/duveka-GmbH/al-objid.git"
     },
-    "homepage": "https://github.com/vjekob/al-objid/blob/master/vscode-extension/README.md",
-    "bugs": "https://github.com/vjekob/al-objid/issues",
+    "homepage": "https://github.com/duveka-GmbH/al-objid/blob/master/vscode-extension/README.md",
+    "bugs": "https://github.com/duveka-GmbH/al-objid/issues",
     "icon": "images/icon.png",
     "galleryBanner": {
         "color": "#505C6D",
         "theme": "dark"
     },
     "engines": {
-        "vscode": "^1.101.0"
+        "vscode": "^1.124.0"
     },
     "license": "MIT",
     "categories": [
@@ -38,23 +38,23 @@
     ],
     "badges": [
         {
-            "url": "https://img.shields.io/github/license/vjekob/al-objid",
-            "href": "https://github.com/vjekob/al-objid/blob/master/LICENSE.md",
+            "url": "https://img.shields.io/github/license/duveka-GmbH/al-objid",
+            "href": "https://github.com/duveka-GmbH/al-objid/blob/master/LICENSE.md",
             "description": "AL Object ID Ninja is licensed under MIT License"
         },
         {
-            "url": "https://img.shields.io/github/languages/top/vjekob/al-objid",
+            "url": "https://img.shields.io/github/languages/top/duveka-GmbH/al-objid",
             "href": "https://www.typescriptlang.org/",
             "description": "Learn TypeScript"
         },
         {
-            "url": "https://img.shields.io/github/forks/vjekob/al-objid?style=social",
-            "href": "https://github.com/vjekob/al-objid/network/members",
+            "url": "https://img.shields.io/github/forks/duveka-GmbH/al-objid?style=social",
+            "href": "https://github.com/duveka-GmbH/al-objid/network/members",
             "description": "Fork this repository and become one of the contributors"
         },
         {
-            "url": "https://img.shields.io/github/stars/vjekob/al-objid?style=social",
-            "href": "https://github.com/vjekob/al-objid/stargazers",
+            "url": "https://img.shields.io/github/stars/duveka-GmbH/al-objid?style=social",
+            "href": "https://github.com/duveka-GmbH/al-objid/stargazers",
             "description": "Share the love! If you like AL Object ID Ninja, give it a star on GitHub!"
         }
     ],

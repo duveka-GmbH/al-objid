@@ -6,6 +6,9 @@ export function preprocessHttpStatusError(error: any): boolean {
             case 410:
                 HttpStatusHandler.instance.handleError410(error.error || "");
                 return true;
+            case 426:
+                HttpStatusHandler.instance.handleError426(error.error || "");
+                return true;
             case 503:
                 HttpStatusHandler.instance.handleError503(error);
                 return true;

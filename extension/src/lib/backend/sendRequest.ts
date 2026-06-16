@@ -6,7 +6,7 @@ import { Config } from "../Config";
 import { HttpMethod, fetchJson } from "./fetchJson";
 import { executeWithStopwatchAsync } from "../MeasureTime";
 import { ConsumptionCache } from "../../features/ConsumptionCache";
-import { API_RESULT } from "../constants";
+import { API_RESULT, EXTENSION_VERSION } from "../constants";
 import { WorkspaceManager } from "../../features/WorkspaceManager";
 import { HttpRequest } from "./HttpRequest";
 import { HttpResponse } from "./HttpResponse";
@@ -50,6 +50,9 @@ export async function sendRequest<T>(
     }
     if (authKey) {
         headers["Ninja-Auth-Key"] = authKey;
+    }
+    if (EXTENSION_VERSION) {
+        headers["Ninja-Version"] = EXTENSION_VERSION;
     }
 
     // Add git user headers
